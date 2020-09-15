@@ -61,7 +61,7 @@ pub fn log(callername: &str, message: &str) {
 */
 
 /// Bresenham's Line Drawing algorithm.  Cardinal steps are computed 
-/// given a 2d line segment.
+/// given a 2d line segment.  This is an iterator struct.
 pub struct Walk {
   start: [f32;2],
   end: [f32;2],
@@ -76,58 +76,59 @@ pub struct Walk {
 impl Walk {
     pub fn new (start : &[f32],
                 end   : &[f32]) -> Self {
-    let mut x = end[0] as i32 - start[0] as i32;
-    let mut y = end[1] as i32 - start[1] as i32;
-    let ax = x.abs();
-    let ay = y.abs();
-    let st;
-    let inc;
+        let mut x = end[0] as i32 - start[0] as i32;
+        let mut y = end[1] as i32 - start[1] as i32;
+        let ax = x.abs();
+        let ay = y.abs();
+        let st;
+        let inc;
 
-    if ay < ax { //  # Walk X and increment Y
-      if 0 < x {
-        if 0<y { st=0; inc=7; } else { st=0; inc=1; }
-      } else {
-        if 0<y { st=4; inc=5; } else { st=4; inc=3; }
-      }
-      y=ay; x=ax;
-    } else { // Walk Y and increment X
-      if 0 < y {
-        if 0<x { st=6; inc=7; } else { st=6; inc=5; }
-      } else {
-      if 0<x { st=2; inc=1; } else { st=2; inc=3; }
-    }
-      y=ax; x=ay;
-    }
+        if ay < ax { //  # Walk X and increment Y
+          if 0 < x {
+            if 0<y { st=0; inc=7; } else { st=0; inc=1; }
+          } else {
+            if 0<y { st=4; inc=5; } else { st=4; inc=3; }
+          }
+          y=ay; x=ax;
+        } else { // Walk Y and increment X
+          if 0 < y {
+            if 0<x { st=6; inc=7; } else { st=6; inc=5; }
+          } else {
+          if 0<x { st=2; inc=1; } else { st=2; inc=3; }
+        }
+          y=ax; x=ay;
+        }
 
-    y=y+y;
-    let e=y-x;
-    let yx=y-x-x;
+        y=y+y;
+        let e=y-x;
+        let yx=y-x-x;
 
-    return Walk{
-      start: [start[0], start[1]],
-      end: [end[0], end[1]],
-      st, inc, x, y, yx, e};
-  }
+        return Walk{
+          start: [start[0], start[1]],
+          end: [end[0], end[1]],
+          st, inc, x, y, yx, e};
+    } // Walk::new
 
 }
 
-const WalkIncrements : [[i32; 2];8]= [
-    [1,  0],  // 0
-    [1, -1],  // 1
-    [0, -1],  // 2
-    [-1, -1], // 3
-    [-1,  0], // 4
-    [-1,  1], // 5
-    [ 0,  1], // 6
-    [ 1,  1]];// 7
+// The cardinal direction -> cartesian vector translation table.
+const WALK_VECTORS : [[i32; 3];8]= [
+    [ 1,  0,  b'-' as i32],  // 0
+    [ 1, -1,  b'/' as i32],  // 1
+    [ 0, -1,  b'|' as i32],  // 2
+    [-1, -1, b'\\' as i32], // 3
+    [-1,  0,  b'-' as i32], // 4
+    [-1,  1,  b'/' as i32], // 5
+    [ 0,  1,  b'|' as i32], // 6
+    [ 1,  1, b'\\' as i32]];// 7
 
 /// Returns array containing [x, y] increments that will perform the walk.
 impl Iterator for Walk {
-  type Item = [i32; 2];
+  type Item = [i32; 3];
   fn next(&mut self) -> Option<Self::Item> {
       if 0 < self.x {
           self.x -= 1;
-          Some(WalkIncrements[
+          Some(WALK_VECTORS[
             if 0 < self.e {
                  self.e += self.yx; self.inc
             } else {

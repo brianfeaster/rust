@@ -24,14 +24,16 @@ pub struct Term {
 
 impl Term {
 
-    pub fn termsizeset(&mut self, cols: i32, rows: i32)  -> &Self {
+    // Public in case you wish to force the terminal size
+    pub fn termsizeset(self: &mut Term, cols: i32, rows: i32)  -> bool {
+        let resized = self.cols != cols || self.rows != rows;
         self.cols  = cols;
         self.rows  = rows;
         self.count = self.cols * self.rows as i32;
-        return self;
+        return resized;
     }
 
-    pub fn termsize(&mut self) -> &Self {
+    pub fn termsize(&mut self) -> bool {
         let winsize = libc::winsize {
             ws_row: 0,
             ws_col: 0,
@@ -98,7 +100,7 @@ impl Term {
         let mut count = 0;
         match stdin().read(&mut buffer) {
             Ok(result) => { count = result; },
-            Err(_msg) => { }
+            Err(_msg) => ()
         }
         return std::str::from_utf8(&buffer[0..count]).expect("utf8 issue").to_string();
     }
@@ -161,7 +163,7 @@ impl Term {
         //print!("\x1b[{}H", self.rows); // Cursor to screen bottom
     }
 
-}
+} // impl Term
 
 impl PrettyPrint for Term {
     fn pp(&self) {
@@ -192,97 +194,151 @@ impl fmt::Debug for Term {
 
 /// Terminal Frame Buffer - A 3D vector abstraction for the terminal.
 ///
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub struct Glyph {
+    pub ch: char,
     pub bg: i32,
     pub fg: i32,
-    pub ch: char
+    pub tick: usize
 }
+
+const GLYPH_NONE :Glyph = Glyph{ch:'\0', bg:0, fg:0, tick:0};
+const GLYPH_BLANK :Glyph = Glyph{ch:' ', bg:0, fg:0, tick:0};
 
 pub struct Tbuff {
     buff: Vec<Glyph>,
-    term: Term
+    term: Term,
+    tick: usize
 }
-
-const GLYPH_EMPTY :Glyph = Glyph{bg: 0, fg: 0, ch:' '};
 
 impl Tbuff {
 
-    pub fn getc (&self) -> String{
+    pub fn getc (self :& Tbuff) -> String{
        self.term.getc()
     }
 
-    pub fn cols (&self) -> i32 { self.term.cols() }
-    pub fn rows (&self) -> i32 { self.term.rows() }
-    pub fn count (&self) -> i32 { self.term.count() }
+    pub fn cols (self :& Tbuff) -> i32 { self.term.cols() }
+    pub fn rows (self :& Tbuff) -> i32 { self.term.rows() }
+    pub fn count (self :& Tbuff) -> i32 { self.term.count() }
 
-    pub fn reset (&mut self) -> &Self {
-        self.term.termsize();
-        self.buff.resize(self.term.count() as usize, GLYPH_EMPTY);
+    pub fn reset (self: &mut Tbuff, tick : usize) -> &Self {
+        self.tick = tick;
+        let gen = tick & 1;
+        if self.term.termsize() { // If the screen size changed reset our model of it.
+            self.buff.resize((self.term.count() * 2) as usize, GLYPH_NONE);
+            for i in 0..self.term.count() { // Set current and previous glyphs at each cell
+                self.buff[(2*i as usize + gen) as usize] = GLYPH_BLANK;
+                self.buff[(2*i as usize + gen^1) as usize] = GLYPH_NONE;
+            }
+        }
         return self;
     }
 
-    pub fn set (&mut self, x:i32, y:i32, bg:i32, fg:i32, ch:char){
-        use std::fmt::Write;
-        //x += self.term.cols()/2;
-        //y += self.term.rows()/2;
+    pub fn set (self: &mut Tbuff, x:i32, y:i32, bg:i32, fg:i32, ch:char){
         let idx = ( self.cols() * y.rem_euclid(self.rows())
-                    + x.rem_euclid(self.cols())) as usize;
-        //self.buff[idx].clear();
+                    + x.rem_euclid(self.cols()))
+                  as usize * 2 + (self.tick&1);
+        self.buff[idx].ch = ch;
         self.buff[idx].bg = bg;
         self.buff[idx].fg = fg;
-        self.buff[idx].ch = ch;
+        self.buff[idx].tick = self.tick;
     }
 
     pub fn line (&mut self, vs1 :&[f32], vs2 :&[f32], ch :char, color: i32) {
         let mut x = vs1[0] as i32;
         let mut y = vs1[1] as i32;
-        for [xinc, yinc] in util::Walk::new(vs1, vs2) {
+        for [xinc, yinc, c] in util::Walk::new(vs1, vs2) {
             x += xinc;
             y += yinc;
-           self.set(x, y, 0, color, ch);
+           self.set(x, y, 0, color, c as u8 as char);
         }
     }
     
-    pub fn dump (
-        self :&Tbuff) -> &Self {
+    // Delta buffer -> terminal dumper
+    // If the glyph's tick matches current tick, then dump gyph (this glyph was updated)
+    // If the ticks don't match, assume a previous cell that should be erased
+    //   If already erased
+    // reset   tick=1
+    // [ ,-1]  [A,1]
+    //   init  render
+    pub fn dump (self :&mut Tbuff) -> &Self {
         let mut lbg: i32 = -1;
         let mut lfg: i32 = -1;
         let mut cb :[u8;4] = [0,0,0,0];
-        match stdout().write("\x1b[H\x1b[0m".as_bytes()) {
-            Ok(o) => {  },
-            Err(e) => { util::flush(); }
+        if let Err(e) = stdout().write("\x1b[H\x1b[0m".as_bytes()) {
+           util::flush();
         }
-        for glyph in &self.buff {
-            if lfg != glyph.fg {
-                lfg = glyph.fg;
-                let bs = if lfg < 8 {
-                    format!("\x1b[3{}m", lfg)
-                } else {
-                    format!("\x1b[38;5;{}m", lfg)
-                };
-                match stdout().write(bs.as_bytes()) {
-                  Ok(o) => { if o != bs.len() { util::flush(); println!("{} != {}", bs.len(), o); util::flush(); util::sleep(5000); }},
-                  Err(e) => { util::flush(); }
+        let ticknow = self.tick&1;
+        let tickback = ticknow ^ 1;
+        let mut glyph : Glyph;
+        let mut col=0;
+        let mut row=0;
+        let mut rowlast=0;
+        let mut skipped = 0;
+        for i in 0..self.buff.len()/2 {
+            // This glyph wasn't updated this tick.  So it's assumed to be a blank now.
+            if self.buff[i*2+ticknow].tick != self.tick {
+                self.buff[i*2+ticknow].ch = ' ';
+                self.buff[i*2+ticknow].bg = 0;
+                self.buff[i*2+ticknow].fg = 0;
+            }
+            if self.buff[i*2+ticknow].ch == self.buff[i*2+tickback].ch &&
+               self.buff[i*2+ticknow].bg == self.buff[i*2+tickback].bg &&
+               self.buff[i*2+ticknow].fg == self.buff[i*2+tickback].fg {
+                skipped += 1;
+            }  else {
+                if skipped != 0 {
+                    let m = if rowlast != row {
+                        format!("\x1b[{};{}H", row+1, col+1)
+                    } else {
+                        format!("\x1b[{}C", skipped)
+                    };
+                    match stdout().write(m.as_bytes()) {
+                      Ok(o) => { }
+                      Err(e) => { }
+                    }
+                }
+                skipped = 0;
+                rowlast = row;
+                // Current and last glyph don't match, so render.
+                glyph = self.buff[i*2+ticknow];
+                // Current and last glyph match, so skip
+                if lfg != glyph.fg  && glyph.ch != ' '{
+                    lfg = glyph.fg;
+                    let bs = if lfg < 8 {
+                        format!("\x1b[3{}m", lfg)
+                    } else if lfg < 256 {
+                        format!("\x1b[38;5;{}m", lfg)
+                    } else {
+                        format!("\x1b[48;2;{};{};{}m", lbg/65536, (lbg/256)%256, lbg%256)
+                    };
+                    match stdout().write(bs.as_bytes()) {
+                      Ok(o) => { if o != bs.len() { util::flush(); println!("{} != {}", bs.len(), o); util::flush(); util::sleep(5000); }},
+                      Err(e) => { util::flush(); }
+                    }
+                }
+                if lbg != glyph.bg {
+                    lbg = glyph.bg;
+                    let bs = if lbg < 8 { // 16 color
+                        format!("\x1b[4{}m", lbg)
+                    } else if  lbg < 256 { // 256 color
+                        format!("\x1b[48;5;{}m", lbg)
+                    } else { // 16M color
+                        format!("\x1b[48;2;{};{};{}m", lbg/65536, (lbg/256)%256, lbg%256)
+                    };
+                    match stdout().write(bs.as_bytes()) {
+                      Ok(o) => { if o != bs.len() { util::flush(); println!("{} != {}", bs.len(), o); util::flush(); util::sleep(5000); }},
+                      Err(e) => { util::flush(); }
+                    }
+                }
+                let bs = glyph.ch.encode_utf8(&mut cb).as_bytes();
+                match stdout().write(bs)  {
+                    Ok(o) => { if o != bs.len() { util::flush(); println!("{} != {}", bs.len(), o); util::flush(); util::sleep(5000); }},
+                    Err(e) => { util::flush(); }
                 }
             }
-            if lbg != glyph.bg {
-                lbg = glyph.bg;
-                let bs = if lfg < 8 {
-                    format!("\x1b[4{}m", lbg)
-                } else {
-                    format!("\x1b[48;5;{}m", lbg)
-                };
-                match stdout().write(bs.as_bytes()) {
-                  Ok(o) => { if o != bs.len() { util::flush(); println!("{} != {}", bs.len(), o); util::flush(); util::sleep(5000); }},
-                  Err(e) => { util::flush(); }
-                }
-            }
-            let bs = glyph.ch.encode_utf8(&mut cb).as_bytes();
-            match stdout().write(bs)  {
-                Ok(o) => { if o != bs.len() { util::flush(); println!("{} != {}", bs.len(), o); util::flush(); util::sleep(5000); }},
-                Err(e) => { util::flush(); }
-            }
+            col += 1;
+            if col == self.term.cols() { col = 0; row += 1; } 
         }
         return self;
     } // Tbuff::dump
@@ -295,7 +351,8 @@ impl Tbuff {
     pub fn new () -> Tbuff {
       let tb = Tbuff{
           buff : Vec::<Glyph>::new(),
-          term : Term::new()
+          term : Term::new(),
+          tick : 0
         };
        tb.term.terminalraw().cursoroff();
        return tb;
@@ -315,7 +372,7 @@ impl Tbuff {
 fn fun_tbuff(term : &mut Term) {
   term.termsizeset(2,2); // Force Term to a 2x2
   let ref mut b = Tbuff::new(); // Init
-  b.reset();                // Reset before each rendering
+  b.reset(0);                // Reset before each rendering
   b.set(0,0, 0, 7, 'x');
   b.set(1,0, 0, 7, 'y');
   b.set(2,0, 0, 7, 'z');
