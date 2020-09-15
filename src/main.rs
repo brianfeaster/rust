@@ -340,7 +340,7 @@ fn entity_create_ship () -> Entity {
             color: vec!(15, 15, 15, 15, 240, 15),
             style: vec!(1,  0,  1,  0, 1, 0),
         },
-        location: [100.0, 50.0, 0.0, 0.0],
+        location: [50.0, 50.0, 0.0, 0.0],
         velocity: [0.0, 0.0, 0.0, 0.0],
         angle: 3.15,
         vangle: 0.0
@@ -606,15 +606,15 @@ fn asciiteroids (rx: Receiver<Ipc>) {
               // Quit
               'q' => power = false,
               // Rotate
-              'j' => entities[0].angle -= 0.1,
-              'l' => entities[0].angle += 0.1,
+              'j' | 'D' => entities[0].angle -= 0.1,
+              'l' | 'C' => entities[0].angle += 0.1,
               // Shoot
-              ' ' | 'J' | 'L' | 'I' => {
+              ' ' | 'J' | 'L' | 'I' | 'z' | 'B' => {
                   entity_bullet_revive(&mut entities);
               },
               'a' => { entities.push(entity_create_asteroid(50.0, 50.0, rng.gen_range(-0.3, 0.3), rng.gen_range(-0.3, 0.3))); },
               // Accelerate
-              'i' => {
+              'i' | 'A' => {
                    entities[0].velocity[0] += 0.1 * entities[0].angle.cos();
                    entities[0].velocity[1] += 0.1 * entities[0].angle.sin();
               },
@@ -1014,10 +1014,10 @@ fn mainJsonSerdes () -> Result<usize, MyError> {
 }
 
 fn main () {
-    //mainAsteroids();
+    mainAsteroid();
     //mainGravity();
     //println!("{:?}", mainJson());
-    println!("!!! {:?}", mainJsonSerdes());
+    //println!("!!! {:?}", mainJsonSerdes());
     //println!("map {:?}", ('🐘' .. '🐷').map(|x| (|x| x)(x)).collect::<Vec<char>>()); // type std::ops::RangeInclusive
 
 }
