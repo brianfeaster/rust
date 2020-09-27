@@ -1,11 +1,10 @@
-//pub mod term;
+#![allow(dead_code, non_snake_case)]
 
 use crate::util;
-use std::fmt;
-use std::io::{stdin, stdout, Read, Write};
-use std::sync::mpsc::{channel, Receiver};
-use std::thread;
-
+use ::std::fmt;
+use ::std::io::{stdin, stdout, Read, Write};
+use ::std::sync::mpsc::{channel, Receiver};
+use ::std::thread;
 
 /// Implementation for "Pretty Printing" an object.
 pub trait PrettyPrint {
@@ -110,7 +109,7 @@ impl Term {
         loop {
             match self.key.try_recv() {
                 Ok(s) => {ss = ss + &s; },
-                Err(e) =>  { break }
+                Err(_e) =>  { break }
             };
         }
         return ss;
@@ -205,6 +204,7 @@ pub struct Glyph {
 const GLYPH_NONE :Glyph = Glyph{ch:'\0', bg:0, fg:0, tick:0};
 const GLYPH_BLANK :Glyph = Glyph{ch:' ', bg:0, fg:0, tick:0};
 
+#[derive(Debug)]
 pub struct Tbuff {
     buff: Vec<Glyph>,
     term: Term,
@@ -244,7 +244,7 @@ impl Tbuff {
         self.buff[idx].tick = self.tick;
     }
 
-    pub fn line (&mut self, vs1 :&[f32], vs2 :&[f32], ch :char, color: i32) {
+    pub fn line (&mut self, vs1 :&[f32], vs2 :&[f32], _ch :char, color: i32) {
         let mut x = vs1[0] as i32;
         let mut y = vs1[1] as i32;
         for [xinc, yinc, c] in util::Walk::new(vs1, vs2) {
@@ -265,7 +265,7 @@ impl Tbuff {
         let mut lbg: i32 = -1;
         let mut lfg: i32 = -1;
         let mut cb :[u8;4] = [0,0,0,0];
-        if let Err(e) = stdout().write("\x1b[H\x1b[0m".as_bytes()) {
+        if let Err(_e) = stdout().write("\x1b[H\x1b[0m".as_bytes()) {
            util::flush();
         }
         let ticknow = self.tick&1;
@@ -294,8 +294,8 @@ impl Tbuff {
                         format!("\x1b[{}C", skipped)
                     };
                     match stdout().write(m.as_bytes()) {
-                      Ok(o) => { }
-                      Err(e) => { }
+                      Ok(_o) => { }
+                      Err(_e) => { }
                     }
                 }
                 skipped = 0;
@@ -314,7 +314,7 @@ impl Tbuff {
                     };
                     match stdout().write(bs.as_bytes()) {
                       Ok(o) => { if o != bs.len() { util::flush(); println!("{} != {}", bs.len(), o); util::flush(); util::sleep(5000); }},
-                      Err(e) => { util::flush(); }
+                      Err(_e) => { util::flush(); }
                     }
                 }
                 if lbg != glyph.bg {
@@ -328,13 +328,13 @@ impl Tbuff {
                     };
                     match stdout().write(bs.as_bytes()) {
                       Ok(o) => { if o != bs.len() { util::flush(); println!("{} != {}", bs.len(), o); util::flush(); util::sleep(5000); }},
-                      Err(e) => { util::flush(); }
+                      Err(_e) => { util::flush(); }
                     }
                 }
                 let bs = glyph.ch.encode_utf8(&mut cb).as_bytes();
                 match stdout().write(bs)  {
                     Ok(o) => { if o != bs.len() { util::flush(); println!("{} != {}", bs.len(), o); util::flush(); util::sleep(5000); }},
-                    Err(e) => { util::flush(); }
+                    Err(_e) => { util::flush(); }
                 }
             }
             col += 1;

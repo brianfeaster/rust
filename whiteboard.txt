@@ -1,0 +1,48 @@
+rustup show
+cargo search regex
+cargo run
+
+# Ideas
+  * traits / OOP interfaces
+
+# packages		
+  * Cargo feature: building, testing, encapsulating crates
+  * Cargo.toml
+     * Describes how to build crates
+  * Contains
+    * multiple binary crate "src/main.rs"
+    * optional library crate "src/lib.rs"
+# crates		
+  * Two types:
+    * Binary/executable
+    * Library
+  * Can be an external dependency
+  * Has "crate roots" found in files:
+    * "src/main.rs"
+    * "lib.rs"  optional
+  * Hierarchy of modules
+    * begins with "crate;:"
+  * Functionality referenced via its scope (via its crate)
+    by other modules.
+  * How to create a library vs binary?	
+  * example existing external crates
+    * std
+    
+# modules 		
+  * Containers of code
+  * Define code organization, scope, accesibility
+  * Modules are specified in files.
+  * First file loaded is "src/main.rs"
+    * Base/default module is "crate::"
+
+# paths/scope		
+  * explicit canonical symbol names
+
+
+
+# debugger
+x 0x00007ffeefbfee24 -c 128 -l 8
+vo
+var
+vv
+frame variable -L

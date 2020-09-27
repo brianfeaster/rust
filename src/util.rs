@@ -2,8 +2,8 @@
 //!
 //! Often used one-off functions
 
-use std::{time, io, thread, fmt};
-use std::io::{Write};
+use ::std::{time, io, thread, fmt};
+use ::std::io::{Write};
 
 /// Sleep for a number of milliseconds
 /// 
@@ -122,7 +122,7 @@ const WALK_VECTORS : [[i32; 3];8]= [
     [ 0,  1,  b'|' as i32], // 6
     [ 1,  1, b'\\' as i32]];// 7
 
-/// Returns array containing [x, y] increments that will perform the walk.
+/// Returns array containing [x, y, ch] increments that will perform the walk.
 impl Iterator for Walk {
   type Item = [i32; 3];
   fn next(&mut self) -> Option<Self::Item> {
@@ -139,6 +139,17 @@ impl Iterator for Walk {
       }
   }
 }
+
+/*
+impl IntoIterator for Walk {
+  type Item = [i32; 3];
+  type IntoIter = Walk;
+
+  fn into_iter(self) -> Self::IntoIter {
+    self
+  }
+}
+*/
 
 impl fmt::Debug for Walk {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
