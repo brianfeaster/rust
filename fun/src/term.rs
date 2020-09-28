@@ -1,6 +1,6 @@
 #![allow(dead_code, non_snake_case)]
 
-use crate::util;
+use ::util;
 use ::std::fmt;
 use ::std::io::{stdin, stdout, Read, Write};
 use ::std::sync::mpsc::{channel, Receiver};

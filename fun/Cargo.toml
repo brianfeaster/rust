@@ -1,0 +1,15 @@
+[package]
+name = "fun"
+version = "0.0.0"
+authors = ["b f <brianf@geemale.kom>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+util = { path = "../util" }
+libc = "0.2"
+rand = "0.7.3"
+json = "0.12.4"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0.57" 

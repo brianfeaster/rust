@@ -1,5 +1,5 @@
 use crate::term::{self};
-use crate::util::{self};
+use ::util::{self};
 use crate::lag::{self, Shape, EntityCast, Entity, Entities};
 use crate::ipc::{Ipc, IpcMsg};
 use ::rand::Rng;

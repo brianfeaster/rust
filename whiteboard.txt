@@ -5,6 +5,8 @@ cargo run
 # Ideas
   * traits / OOP interfaces
 
+# Workspace
+  *
 # packages		
   * Cargo feature: building, testing, encapsulating crates
   * Cargo.toml
@@ -17,16 +19,16 @@ cargo run
     * Binary/executable
     * Library
   * Can be an external dependency
-  * Has "crate roots" found in files:
-    * "src/main.rs"
+  * Has "crate roots" the files:
+    * "src/main.rs" or "src/bin/*"
     * "lib.rs"  optional
   * Hierarchy of modules
-    * begins with "crate;:"
+    * begins with "crate::" unless the root is not explicitly "mod"ed in which case begins with "::".
   * Functionality referenced via its scope (via its crate)
     by other modules.
   * How to create a library vs binary?	
   * example existing external crates
-    * std
+    * crate::std::
     
 # modules 		
   * Containers of code

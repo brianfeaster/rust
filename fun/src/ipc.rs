@@ -23,7 +23,7 @@ pub struct IpcMsg {
 impl Ipc {
 
     pub fn new (stream:TcpStream, id:i32) -> Self {
-        crate::Ipc{
+        crate::ipc::Ipc{
             stream : stream,
             id     : id,
             buff   : " ".repeat(64),
@@ -31,7 +31,7 @@ impl Ipc {
             stagei : 0}
     } // Ipc::new
 
-    pub fn send (self :&mut crate::Ipc,
+    pub fn send (self :&mut Ipc,
                  msg  :&IpcMsg) -> i32 {
         let buff = format!("{} {}\n", msg.id, msg.msg);
         match self.stream.write(buff.as_bytes()) {

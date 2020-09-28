@@ -1,13 +1,12 @@
 #![allow(dead_code, unused_imports, unused_variables, non_snake_case)]
-mod util; // Which places contents of util.rs here in namespace util.
 mod term;
 mod ipc;
 mod lag;
 mod asciirhoids;
 
-use crate::ipc::{Ipc, IpcMsg};
-use crate::term::{Tbuff}; // Module path prefix "crate::"" and "self::"" are pedantic.
-use crate::lag::{Shape, Entity, Entities, EntityCast};
+//use crate::ipc::{Ipc};
+//use crate::term::{Tbuff}; // Module path prefix "crate::"" and "self::"" are pedantic.
+//use crate::lag::{Shape, Entity, Entities, EntityCast};
 
 use ::std::{
     fs,
@@ -20,7 +19,7 @@ use ::serde_json::{self as sj, Value, from_str, to_string_pretty};
 
 /// Enhance Tbuff struct with more useful methods.
 /// 
-impl term::Tbuff {
+impl crate::term::Tbuff {
 
     fn clear (self  :&mut term::Tbuff,
             bg    :i32,
@@ -73,16 +72,16 @@ impl term::Tbuff {
 // A fun console Asteroids game
 //
 pub fn mainAsteroid () {
-    let (txipc, rxipc) = channel::<Ipc>(); // 
+    let (txipc, rxipc) = channel::<crate::ipc::Ipc>(); // 
     let doit :bool = true;
     match TcpListener::bind("127.0.0.1:7145") {
-        Ok(l) => ipc::server(l, txipc),
-        Err(_) => ipc::client(txipc),
+        Ok(l) => crate::ipc::server(l, txipc),
+        Err(_) => crate::ipc::client(txipc),
     }
     if doit { 
         asciirhoids::asciiteroids(rxipc); // Channel of Ipc objects
     } else {
-        let mut ipc :Ipc = rxipc.recv().unwrap();
+        let mut ipc :crate::ipc::Ipc = rxipc.recv().unwrap();
         loop {
             // receive
             loop {
@@ -98,7 +97,7 @@ pub fn mainAsteroid () {
             //let len :i32    = ipc.send(&msg);
             //println!("[{}]> {:?} {}", ipc.id, msg, len);
             //if len < 1 { println!("ipc.send returned {} breaking!", len); break; }
-            util::sleep(200);
+            ::util::sleep(200);
         }
     } // if isServer
 } 
@@ -107,12 +106,12 @@ pub fn mainAsteroid () {
 ////////////////////////////////////////////////////////////////////////////////
 // A fun console 2d gravity/orbital-mechanics simulator
 //
-fn entity_create_bullet () -> Entity {
-    return Entity {
+fn entity_create_bullet () -> crate::lag::Entity {
+    return crate::lag::Entity {
         power: false,
-        cast: EntityCast::BULLET,
+        cast: lag::EntityCast::BULLET,
         age: 0,
-        shape : Shape {
+        shape : lag::Shape {
             vertices_original : vec!([  0.0,   0.0,  0.0,  1.0]),
             vertices: vec!(),
             color: vec!(15),
@@ -125,12 +124,12 @@ fn entity_create_bullet () -> Entity {
     };
 }
 
-fn entity_create_star () -> Entity {
-    return Entity {
+fn entity_create_star () -> lag::Entity {
+    return lag::Entity {
         power: false,
-        cast: EntityCast::STAR,
+        cast: lag::EntityCast::STAR,
         age: 0,
-        shape : Shape {
+        shape : lag::Shape {
             vertices_original : vec!([  0.0,   0.0,  0.0,  1.0]),
             vertices: vec!(),
             color: vec!(15),
@@ -143,7 +142,7 @@ fn entity_create_star () -> Entity {
     };
 }
 
-fn entity_exhaust_revive (ents :&mut Entities, dir: char) {
+fn entity_exhaust_revive (ents :&mut lag::Entities, dir: char) {
     let iship = 2;
     let mut ibullet = 0;
     for i in 3..=7 {
@@ -173,7 +172,7 @@ pub fn mainGravity () {
     let mut power = true;
     let mut tick :usize = 1;
     let mut tb = term::Tbuff::new();
-    let mut entities = Entities::new();
+    let mut entities = lag::Entities::new();
 
     let mut sun = entity_create_star();
     sun.power = true;
@@ -245,8 +244,8 @@ pub fn mainGravity () {
         tb.dump(); // Render the finalized terminal buffer.
         //print!("\x1b[H\x1b[0;1m{:?} {:?}", entities[1].location, entities[1].velocity);
         //print!("\x1b[H\x1b[0;1m{:?}", tick);
-        util::flush();
-        util::sleep(10);
+        ::util::flush();
+        ::util::sleep(10);
     }
     tb.done(); // Reset system terminal the way we found it
 }
@@ -310,5 +309,5 @@ fn mainJsonSerdes () -> Result<usize, MyError> {
     )
 }
 
-//mod pub
+//mod fun;
 //pub fn callFun () { fun::main(); }

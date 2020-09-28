@@ -2,8 +2,13 @@
 //!
 //! Often used one-off functions
 
-use ::std::{time, io, thread, fmt};
-use ::std::io::{Write};
+use ::std::{
+    io::{Write},
+    time,
+    io,
+    thread,
+    fmt
+};
 
 /// Sleep for a number of milliseconds
 /// 
