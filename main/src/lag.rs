@@ -1,11 +1,12 @@
 use crate::term::{self, Tbuff}; // Module path prefix "crate::"" and "self::"" are pedantic.
 use ::util;
+use ::piston_window::*;
 
 ////////////////////////////////////////////////////////////////////////////////
 
 /// 3d Stuff
 /// 
-type Vertex = [f32; 4];  // Homogeneous 
+type Vertex = ::vecmath::Vector4<f32>; //[f32; 4];  // Homogeneous 
 
 type Vertices = Vec<Vertex>;
 
@@ -98,6 +99,33 @@ impl Entity {
         return self;
     }
 
+    // Scale all entity's vertices (origin normalized) to viewport width x height
+    fn wrap (
+        &mut self,
+        tb :&Tbuff
+    ) -> &mut Self
+    {
+        if !self.power { return self; }
+        if self.location[0] < -1.0 { self.location[0] += 2.0; }
+        if self.location[0] > 1.0  { self.location[0] -= 2.0; }
+        if self.location[1] < -1.0 { self.location[1] += 2.0; }
+        if self.location[1] > 1.0  { self.location[1] -= 2.0; }
+        return self;
+    }
+    // Scale all entity's vertices (origin normalized) to viewport width x height
+    fn scale_to_viewport (
+        &mut self,
+        tb :&Tbuff,
+        w:u32,
+        h:u32
+    ) -> &mut Self
+    {
+        if !self.power { return self; }
+        translate(&mut self.shape.vertices, &[1.0, 1.0, 1.0, 0.0]);
+        scale(&mut self.shape.vertices, &[w as f32 / 2.0, h as f32 / 2.0]);
+        return self;
+    }
+
     fn scale_to_terminal_origin_center (self: &mut Entity, tb :&Tbuff, obj_center: &Vertex) -> &mut Self {
         if !self.power { return self; }
         // Scale to screen size
@@ -125,30 +153,74 @@ impl Entity {
             for [xinc, yinc, ch] in util::Walk::new(&vs1[0..2], &vs2[0..2]) {
                 x += xinc;
                 y += yinc;
-                tb.set(x, y, 0, 1, ch as u8 as char);
+                tb.set(x as usize, y as usize, 0, 1, ch as u8 as char);
             }
         } // while
         self
     } // draw_spokes
 
+    // Plot the vertices in the shape.  Two types supported:  lines and points
+    fn plot_shape (
+        self : &mut Entity,
+        context :piston_window::Context,
+        graphics :&mut G2d
+    ) -> &mut Self{
+        if !self.power { return self; }
+        let shape = &self.shape;
+        for v in 0..shape.vertices.len() {
+            if shape.color[v] == 0 { continue }
+            if 0 == shape.style[v] {
+                rectangle(
+                    [ 0.0, 1.0, 0.0, 1.0 ],
+                    [ shape.vertices[v][0] as f64, shape.vertices[v][1] as f64,
+                      1.0,                    1.0 ],
+                    context.transform,
+                    graphics);
+            }  else if 1 == shape.style[v] {
+                line(
+                    [ 0.0, 1.0, 0.0, 0.20 ],
+                    0.50,
+                    [ shape.vertices[v][0] as f64, shape.vertices[v][1] as f64,
+                      shape.vertices[v+1][0] as f64, shape.vertices[v+1][1] as f64],
+                    context.transform,
+                    graphics);
+            } // else
+        } // while
+
+        // Emphasize line endpoints
+        for v in 0..shape.vertices.len() {
+            if shape.color[v] == 0 { continue }
+            if 1 == shape.style[v] {
+                rectangle(
+                    [ 0.0, 1.0, 0.0, 0.5 ],
+                    [ shape.vertices[v][0] as f64 - 0.5, shape.vertices[v][1] as f64 - 0.5,
+                      1.0,                    1.0 ],
+                    context.transform,
+                    graphics);
+            }
+        } // while
+        return self;
+    } // plot_shape
+
     fn draw_shape (
             self : &mut Entity,
-            tb  :&mut term::Tbuff) -> &mut Self {
+            tb  :&mut term::Tbuff
+    ) -> &mut Self {
         if !self.power { return self; }
         let shape = &self.shape;
         for v in 0..shape.vertices.len() {
             if shape.color[v] == 0 { continue }
             if 0 == shape.style[v] {
                 tb.set(
-                     shape.vertices[v][0] as i32,
-                     shape.vertices[v][1] as i32,
+                     shape.vertices[v][0] as usize,
+                     shape.vertices[v][1] as usize,
                      0, shape.color[v], '*');
             }  else if 1 == shape.style[v] {
                tb.line(&shape.vertices[v], &shape.vertices[v+1], '@', shape.color[v]);
             } // else
         } // while
         return self;
-    } // fb_draw_asteroid 
+    } // draw_shape
 
 } // impl Entity
 
@@ -223,6 +295,17 @@ impl Entities {
           self.iter_mut().map( |e|e.scale_to_terminal(tb) ).count();
           self
     }
+
+    pub fn wrap (&mut self, tb :&Tbuff) -> &mut Self {
+          self.iter_mut().map( |e| e.wrap(tb) ).count();
+          self
+    }
+
+    // Scale all origin-normalized objects to viewport
+    pub fn scale_to_viewport (&mut self, tb :&Tbuff, w:u32, h:u32) -> &mut Self {
+          self.iter_mut().map( |e|e.scale_to_viewport(tb, w, h) ).count();
+          self
+    }
     pub fn scale_to_terminal_origin_center (&mut self, tb :&Tbuff) -> &mut Self {
           let center_loc = self.entities[1].location.clone();
           self.iter_mut().enumerate().map( |(i,e)|e.scale_to_terminal_origin_center(tb,
@@ -233,9 +316,8 @@ impl Entities {
           self
     }
 
-
     // Hide bullet after a while (limited life span)
-    pub fn age_bullet (&mut self) -> &mut Self {
+    pub fn expire_bullet (&mut self) -> &mut Self {
         for mut e in self.iter_mut() {
             if e.cast== EntityCast::BULLET {
                 e.age += 1;
@@ -253,4 +335,18 @@ impl Entities {
             e.draw_shape(tb);
         }
     }
+
+    pub fn plot_shapes (
+        &mut self,
+        context :piston_window::Context,
+        graphics :&mut G2d
+    ) {
+        for e in self.iter_mut() {
+            e.plot_shape(context, graphics);
+        }
+    }
 } // impl Entities
+
+pub fn main () {
+    println!("== main/src/lag.rs:main() {:?} ====", core::module_path!());
+}

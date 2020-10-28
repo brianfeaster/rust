@@ -44,7 +44,7 @@ cargo run
 
 # debugger
 x 0x00007ffeefbfee24 -c 128 -l 8
-vo
+vo -L
 var
 vv
 frame variable -L

@@ -4,6 +4,7 @@
     // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
     "version": "0.2.0",
     "configurations": [
+        
     
         {
             "type": "lldb",
@@ -14,6 +15,7 @@
                     "build"
                 ]
             },
+            "env": { "RUST_LOG": "trace"},
             "program": "${cargo:program}",
             "args": []
         },

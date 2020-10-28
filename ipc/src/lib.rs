@@ -1,3 +1,4 @@
+#![allow(non_snake_case)]
 use ::std::fmt;
 use ::std::thread;
 use ::std::net::{TcpStream, TcpListener};
@@ -23,7 +24,7 @@ pub struct IpcMsg {
 impl Ipc {
 
     pub fn new (stream:TcpStream, id:i32) -> Self {
-        crate::ipc::Ipc{
+        self::Ipc{
             stream : stream,
             id     : id,
             buff   : " ".repeat(64),

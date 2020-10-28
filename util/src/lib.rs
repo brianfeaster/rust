@@ -3,11 +3,11 @@
 //! Often used one-off functions
 
 use ::std::{
-    io::{Write},
-    time,
-    io,
-    thread,
-    fmt
+        io::{Write},
+        time,
+        io,
+        thread,
+        fmt
 };
 
 /// Sleep for a number of milliseconds
@@ -77,6 +77,7 @@ pub struct Walk {
   yx: i32,
   e: i32
 }
+
 
 impl Walk {
     pub fn new (start : &[f32],

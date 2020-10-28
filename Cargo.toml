@@ -1,5 +1,11 @@
+[package]
+name = "asteroids"
+version = "0.0.0"
+authors = ["b f <brianf@geemale.kom>"]
+edition = "2018"
+
 [workspace]
-members = [
-    "fun",
-    "util",
-]
+members = [ "main", "ipc", "util" ]
+
+[dependencies]
+main = { path = "main" }

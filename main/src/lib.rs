@@ -1,10 +1,12 @@
-#![allow(dead_code, unused_imports, unused_variables, non_snake_case)]
-mod term;
-mod ipc;
+#![allow(dead_code, unused_assignments, unused_imports, unused_variables, non_snake_case)]
+
+// Bind the following modules to crate::
+pub mod term;
 mod lag;
+pub mod fun;
+mod life;
 mod asciirhoids;
 
-//use crate::ipc::{Ipc};
 //use crate::term::{Tbuff}; // Module path prefix "crate::"" and "self::"" are pedantic.
 //use crate::lag::{Shape, Entity, Entities, EntityCast};
 
@@ -13,8 +15,19 @@ use ::std::{
     //collections::{HashMap},
     net::TcpListener,
     sync::mpsc::{channel, Receiver}};
+use ::piston_window::*;
 use ::serde::{Serialize, Deserialize};
 use ::serde_json::{self as sj, Value, from_str, to_string_pretty};
+use ::log::*;
+
+/// Create a random f32 number
+pub fn r32(m: f32) -> f32 { ::rand::random::<f32>() * m }
+
+/// Create random i32
+pub fn ri32(m: i32) -> i32 { (::rand::random::<f32>() * m as f32) as i32 }
+
+/// Create a random f64 number
+pub fn r64(m: f32) -> f64 { ::rand::random::<f64>() * m as f64 }
 
 
 /// Enhance Tbuff struct with more useful methods.
@@ -72,16 +85,16 @@ impl crate::term::Tbuff {
 // A fun console Asteroids game
 //
 pub fn mainAsteroid () {
-    let (txipc, rxipc) = channel::<crate::ipc::Ipc>(); // 
+    let (txipc, rxipc) = channel::<::ipc::Ipc>(); // 
     let doit :bool = true;
     match TcpListener::bind("127.0.0.1:7145") {
-        Ok(l) => crate::ipc::server(l, txipc),
-        Err(_) => crate::ipc::client(txipc),
+        Ok(l) => ::ipc::server(l, txipc),
+        Err(_) => ::ipc::client(txipc),
     }
     if doit { 
-        asciirhoids::asciiteroids(rxipc); // Channel of Ipc objects
+        crate::asciirhoids::asciiteroids(rxipc); // Channel of Ipc objects
     } else {
-        let mut ipc :crate::ipc::Ipc = rxipc.recv().unwrap();
+        let mut ipc : ::ipc::Ipc = rxipc.recv().unwrap();
         loop {
             // receive
             loop {
@@ -203,6 +216,17 @@ pub fn mainGravity () {
         entities.push(bullet);
     }
 
+    // Non-terminal Visualization
+    let mut width :u32 = 800;
+    let mut height :u32 = 600;
+    let mut window: PistonWindow =
+        piston_window::WindowSettings::new( "ASCIIRhOIDS", [width, height])
+            .exit_on_esc(true)
+            .decorated(true)
+            .transparent(true)
+            .build()
+            .unwrap();
+
     while power {
         for ch in tb.getc().chars() {
             match ch {
@@ -236,12 +260,29 @@ pub fn mainGravity () {
         entities[2].velocity[0] += fx;
         entities[2].velocity[1] += fy;
 
-        entities.tick_and_transform().age_bullet();
+        entities.tick_and_transform().expire_bullet();
         tick += 1;
         tb.reset(tick);
         //tb.draw_background_sinies(tick as i32);
         entities.scale_to_terminal_origin_center(&mut tb).draw_shapes(&mut tb);
-        tb.dump(); // Render the finalized terminal buffer.
+
+        while let Some(event) = window.next() {
+            if event.render_args() != None {
+                width = event.render_args().unwrap().window_size[0] as u32;
+                height = event.render_args().unwrap().window_size[1] as u32;
+                window.draw_2d(
+                    &event,
+                    | context, graphics, _device | {
+                        clear([0.0, 0.0, 0.0, 1.0], graphics);
+                        //entities.plot_shapes(context, graphics);
+                        tb.dumpPiston(context, graphics); // Dump the terminal buffer's buffer to stdout
+                    }
+                );
+                break;
+            }
+        }
+        //tb.dump(); // Render the finalized terminal buffer.
+
         //print!("\x1b[H\x1b[0;1m{:?} {:?}", entities[1].location, entities[1].velocity);
         //print!("\x1b[H\x1b[0;1m{:?}", tick);
         ::util::flush();
@@ -256,7 +297,7 @@ pub fn mainGravity () {
 //
 
 #[derive(Debug)]
-enum MyError {
+pub enum MyError {
     IoError(std::io::Error),
     JsonError(json::Error),
     SerdeJsonError(serde_json::Error)
@@ -309,5 +350,13 @@ fn mainJsonSerdes () -> Result<usize, MyError> {
     )
 }
 
-//mod fun;
-//pub fn callFun () { fun::main(); }
+pub fn main () {
+    ::pretty_env_logger::init();
+    ::std::println!("== {}:{} ::{}::main() ====", std::file!(), core::line!(), core::module_path!());
+    //println!("{:?}", mainJson());
+    //println!("!!! {:?}", mainJsonSerdes());
+    //println!("map {:?}", ('🐘' .. '🐷').map(|x| (|x| x)(x)).collect::<Vec<char>>()); // type std::ops::RangeInclusive
+    //crate::lag::main();
+    //crate::fun::main();
+    crate::life::main();
+}

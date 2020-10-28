@@ -3,8 +3,9 @@
 use ::util;
 use ::std::fmt;
 use ::std::io::{stdin, stdout, Read, Write};
-use ::std::sync::mpsc::{channel, Receiver};
+use ::std::sync::mpsc::{channel, Receiver, Sender};
 use ::std::thread;
+use piston_window::*;
 
 /// Implementation for "Pretty Printing" an object.
 pub trait PrettyPrint {
@@ -13,27 +14,29 @@ pub trait PrettyPrint {
 
 /// Terminal Abstaction
 pub struct Term {
-    cols: i32,
-    rows: i32,
-    count: i32,
+    cols: usize,
+    rows: usize,
+    count: usize,
     original_termios: libc::termios,
     original_fcntl: libc::c_int,
+    keyin : Sender<String>,
+    keyout : Receiver<String>,
     key : Receiver<String>,
 }
 
 impl Term {
 
     // Public in case you wish to force the terminal size
-    pub fn termsizeset(self: &mut Term, cols: i32, rows: i32)  -> bool {
+    pub fn termsizeset(self: &mut Term, cols: usize, rows: usize)  -> bool {
         let resized = self.cols != cols || self.rows != rows;
         self.cols  = cols;
         self.rows  = rows;
-        self.count = self.cols * self.rows as i32;
+        self.count = self.cols * self.rows;
         return resized;
     }
 
     pub fn termsize(&mut self) -> bool {
-        let winsize = libc::winsize {
+        let winsize = ::libc::winsize {
             ws_row: 0,
             ws_col: 0,
             ws_xpixel: 0,
@@ -42,7 +45,7 @@ impl Term {
         unsafe {
             libc::ioctl(libc::STDOUT_FILENO, libc::TIOCGWINSZ, &winsize);
         }
-        return self.termsizeset(winsize.ws_col as i32, winsize.ws_row as i32);
+        return self.termsizeset(winsize.ws_col as usize, winsize.ws_row as usize);
     }
 
     /*
@@ -89,9 +92,9 @@ impl Term {
         return self;
     }
 
-    pub fn cols (self: &Term) -> i32 { return self.cols; }
-    pub fn rows (self: &Term) -> i32 { return self.rows; }
-    pub fn count (self: &Term) -> i32 { return self.count; }
+    pub fn cols (self: &Term) -> usize { return self.cols; }
+    pub fn rows (self: &Term) -> usize { return self.rows; }
+    pub fn count (self: &Term) -> usize { return self.count; }
 
     /// Blocking read from terminal.  Unbuffered if terminalraw() called.
     fn getc_actual () -> String {
@@ -104,10 +107,20 @@ impl Term {
         return std::str::from_utf8(&buffer[0..count]).expect("utf8 issue").to_string();
     }
 
+    pub fn pushc (&self, s :String) {
+        self.keyin.send(s).expect("Unable to send on keyboard buffer channel");
+    }
+
     pub fn getc (&self) -> String {
         let mut ss : String = String::new();
         loop {
             match self.key.try_recv() {
+                Ok(s) => {ss = ss + &s; },
+                Err(_e) =>  { break }
+            };
+        }
+        loop {
+            match self.keyout.try_recv() {
                 Ok(s) => {ss = ss + &s; },
                 Err(_e) =>  { break }
             };
@@ -117,6 +130,7 @@ impl Term {
 
     pub fn new () -> Self {
         let (tx, rx) = channel();
+        let (txin, rxin) = channel();
         let mut term = Term{
             cols: 0,
             rows: 0,
@@ -130,6 +144,8 @@ impl Term {
                 c_ispeed: 0,
                 c_ospeed: 0 },
             original_fcntl: 0,
+            keyin: txin,
+            keyout: rxin,
             key: rx
         };
         unsafe {
@@ -159,7 +175,8 @@ impl Term {
         }
         print!("\x1b[0m"); // Reset color
         print!("\x1b[?25h"); // Enable Cursor
-        //print!("\x1b[{}H", self.rows); // Cursor to screen bottom
+        print!("\x1b[{}H", self.rows); // Cursor to screen bottom
+        util::flush();
     }
 
 } // impl Term
@@ -213,13 +230,18 @@ pub struct Tbuff {
 
 impl Tbuff {
 
-    pub fn getc (self :& Tbuff) -> String{
+    pub fn getc (self :& Tbuff) -> String {
        self.term.getc()
     }
 
-    pub fn cols (self :& Tbuff) -> i32 { self.term.cols() }
-    pub fn rows (self :& Tbuff) -> i32 { self.term.rows() }
-    pub fn count (self :& Tbuff) -> i32 { self.term.count() }
+    pub fn pushc (self :& Tbuff, s:String) {
+       self.term.pushc(s);
+    }
+
+    pub fn cols  (self :& Tbuff) -> usize { self.term.cols() }
+    pub fn rows  (self :& Tbuff) -> usize { self.term.rows() }
+    pub fn count (self :& Tbuff) -> usize { self.term.count() }
+    pub fn dims (self :& Tbuff) -> (usize, usize, usize) { (self.cols(), self.rows(), self.count()) }
 
     pub fn reset (self: &mut Tbuff, tick : usize) -> &Self {
         self.tick = tick;
@@ -227,17 +249,18 @@ impl Tbuff {
         if self.term.termsize() { // If the screen size changed reset our model of it.
             self.buff.resize((self.term.count() * 2) as usize, GLYPH_NONE);
             for i in 0..self.term.count() { // Set current and previous glyphs at each cell
-                self.buff[(2*i as usize + gen) as usize] = GLYPH_BLANK;
-                self.buff[(2*i as usize + gen^1) as usize] = GLYPH_NONE;
+                self.buff[(2*i + gen)] = GLYPH_BLANK;
+                self.buff[(2*i + gen^1)] = GLYPH_NONE;
             }
         }
         return self;
     }
 
-    pub fn set (self: &mut Tbuff, x:i32, y:i32, bg:i32, fg:i32, ch:char){
-        let idx = ( self.cols() * y.rem_euclid(self.rows())
-                    + x.rem_euclid(self.cols()))
-                  as usize * 2 + (self.tick&1);
+    pub fn set (self: &mut Tbuff, x:usize, y:usize, bg:i32, fg:i32, ch:char){
+        let idx =
+            (  x.rem_euclid(self.cols())
+             + y.rem_euclid(self.rows()) * self.cols()) as usize *
+            2 + (self.tick&1); // index the right page
         self.buff[idx].ch = ch;
         self.buff[idx].bg = bg;
         self.buff[idx].fg = fg;
@@ -250,7 +273,7 @@ impl Tbuff {
         for [xinc, yinc, c] in util::Walk::new(vs1, vs2) {
             x += xinc;
             y += yinc;
-           self.set(x, y, 0, color, c as u8 as char);
+           self.set(x as usize, y as usize, 0, color, c as u8 as char);
         }
     }
     
@@ -260,17 +283,120 @@ impl Tbuff {
     //   If already erased
     // reset   tick=1
     // [ ,-1]  [A,1]
-    //   init  render
-    pub fn dump (self :&mut Tbuff) -> &Self {
+    //   init  renderi
+    
+    pub fn dumpPiston (
+        self :&mut Tbuff,
+        context :piston_window::Context,
+        graphics :&mut G2d
+    ) -> &Self
+    {
+        let mut lbg: i32 = -1;
+        let mut lfg: i32 = -1;
+        let mut cb :[u8;4] = [0,0,0,0];
+        //if let Err(_e) = stdout().write("\x1b[H\x1b[0m".as_bytes()) {
+        //   util::flush();
+        //}
+        let ticknow = self.tick&1;
+        let tickback = ticknow ^ 1;
+        let mut glyph : Glyph = Glyph{ch:' ', bg:0, fg:0, tick:0};
+        let mut col=0;
+        let mut row=0;
+        let mut rowlast=0;
+        let mut skipped = 0;
+        for i in 0..self.buff.len()/2 {
+            // This glyph wasn't updated this tick.  So it's assumed to be a blank now.
+            if self.buff[i*2+ticknow].tick != self.tick {
+                self.buff[i*2+ticknow].ch = ' ';
+                self.buff[i*2+ticknow].bg = 0;
+                self.buff[i*2+ticknow].fg = 0;
+            }
+            // Plot to non-terminal display device
+            if self.buff[i*2+ticknow].ch != ' ' { // Consider current glyph character in the current (double) buffer
+                rectangle(
+                    [ 0.0, 0.5, 0.0, 1.0 ],
+                    [ col as f64 * 5.0 - 1.0, row as f64 * 7.0 - 1.0,
+                      6.0,                    8.0 ],
+                    context.transform,
+                    graphics);
+                rectangle(
+                    [ 0.0, 1.0, 0.0, 1.0] ,
+                    [ col as f64 * 5.0 , row as f64 * 7.0 ,
+                      4.0,               6.0 ],
+                    context.transform,
+                    graphics);
+            }
+            if self.buff[i*2+ticknow].ch == self.buff[i*2+tickback].ch &&
+               self.buff[i*2+ticknow].bg == self.buff[i*2+tickback].bg &&
+               self.buff[i*2+ticknow].fg == self.buff[i*2+tickback].fg {
+                skipped += 1;
+            }  else {
+                if skipped != 0 {
+                    let m = if rowlast != row {
+                        format!("\x1b[{};{}H", row+1, col+1)
+                    } else {
+                        format!("\x1b[{}C", skipped)
+                    };
+                    match stdout().write(m.as_bytes()) {
+                      Ok(_o) => { }
+                      Err(_e) => { }
+                    }
+                }
+                skipped = 0;
+                rowlast = row;
+                // Current and last glyph don't match, so render.
+                glyph = self.buff[i*2+ticknow];
+                // Current and last glyph match, so skip
+                if lfg != glyph.fg  && glyph.ch != ' '{
+                    lfg = glyph.fg;
+                    let bs = if lfg < 8 {
+                        format!("\x1b[3{}m", lfg)
+                    } else if lfg < 256 {
+                        format!("\x1b[38;5;{}m", lfg)
+                    } else {
+                        format!("\x1b[48;2;{};{};{}m", lbg/65536, (lbg/256)%256, lbg%256)
+                    };
+                    match stdout().write(bs.as_bytes()) {
+                      Ok(o) => { if o != bs.len() { util::flush(); println!("{} != {}", bs.len(), o); util::flush(); util::sleep(5000); }},
+                      Err(_e) => { util::flush(); }
+                    }
+                }
+                if lbg != glyph.bg {
+                    lbg = glyph.bg;
+                    let bs = if lbg < 8 { // 16 color
+                        format!("\x1b[4{}m", lbg)
+                    } else if  lbg < 256 { // 256 color
+                        format!("\x1b[48;5;{}m", lbg)
+                    } else { // 16M color
+                        format!("\x1b[48;2;{};{};{}m", lbg/65536, (lbg/256)%256, lbg%256)
+                    };
+                    match stdout().write(bs.as_bytes()) {
+                      Ok(o) => { if o != bs.len() { util::flush(); println!("{} != {}", bs.len(), o); util::flush(); util::sleep(5000); }},
+                      Err(_e) => { util::flush(); }
+                    }
+                }
+                let bs = glyph.ch.encode_utf8(&mut cb).as_bytes();
+                match stdout().write(bs)  {
+                    Ok(o) => { if o != bs.len() { util::flush(); println!("{} != {}", bs.len(), o); util::flush(); util::sleep(5000); }},
+                    Err(_e) => { util::flush(); }
+                }
+            }
+            col += 1;
+            if col == self.term.cols() { col = 0; row += 1; } 
+        }
+        return self;
+    } // Tbuff::dump
+
+    pub fn dump (self :&mut Tbuff) -> &Tbuff {
         let mut lbg: i32 = -1;
         let mut lfg: i32 = -1;
         let mut cb :[u8;4] = [0,0,0,0];
         if let Err(_e) = stdout().write("\x1b[H\x1b[0m".as_bytes()) {
            util::flush();
         }
-        let ticknow = self.tick&1;
+        let ticknow = self.tick & 1;
         let tickback = ticknow ^ 1;
-        let mut glyph : Glyph;
+        let mut glyph : Glyph = Glyph{ch:' ', bg:0, fg:0, tick:0};
         let mut col=0;
         let mut row=0;
         let mut rowlast=0;
@@ -343,7 +469,7 @@ impl Tbuff {
         return self;
     } // Tbuff::dump
 
-    pub fn flush (self :&Tbuff) -> &Self {
+    pub fn flush (self :& Tbuff) -> &Self {
         util::flush();
         return self;
     }
@@ -358,8 +484,9 @@ impl Tbuff {
        return tb;
     }
 
-    pub fn pp (&self) {
+    pub fn pp (self :& Tbuff) -> &Self {
         println!("{:?}", self.buff);
+        return self;
     }
 
     pub fn done (&self) {
@@ -377,4 +504,8 @@ fn fun_tbuff(term : &mut Term) {
   b.set(1,0, 0, 7, 'y');
   b.set(2,0, 0, 7, 'z');
   b.pp();
+}
+
+pub fn main() {
+    ::std::println!("== {}:{} ::{}::main() ====", std::file!(), core::line!(), core::module_path!());
 }
