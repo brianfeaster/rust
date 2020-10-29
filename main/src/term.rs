@@ -259,7 +259,7 @@ impl Tbuff {
     pub fn set (self: &mut Tbuff, x:usize, y:usize, bg:i32, fg:i32, ch:char){
         let idx =
             (  x.rem_euclid(self.cols())
-             + y.rem_euclid(self.rows()) * self.cols()) as usize *
+             + y.rem_euclid(self.rows()) * self.cols()) *
             2 + (self.tick&1); // index the right page
         self.buff[idx].ch = ch;
         self.buff[idx].bg = bg;
