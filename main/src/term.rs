@@ -111,7 +111,7 @@ impl Term {
         self.keyin.send(s).expect("Unable to send on keyboard buffer channel");
     }
 
-    pub fn getc (&self) -> String {
+    pub fn getc (self :& Term) -> String {
         let mut ss : String = String::new();
         loop {
             match self.key.try_recv() {
@@ -168,7 +168,7 @@ impl Term {
         return term;
     }
 
-    pub fn done (&self) {
+    pub fn done (self :& Term) {
         unsafe {
             libc::tcsetattr(0, libc::TCSANOW, &self.original_termios);
             //self.termblock();
@@ -489,7 +489,7 @@ impl Tbuff {
         return self;
     }
 
-    pub fn done (&self) {
+    pub fn done (self :& Tbuff) {
          self.term.done()
     }
 } // impl Tbuff
