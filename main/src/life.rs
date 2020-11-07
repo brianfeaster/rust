@@ -1,4 +1,13 @@
 use ::std::sync::{Arc, Mutex};
+use ::std::thread::{spawn, JoinHandle};
+use ::std::time::{SystemTime};
+use ::std::ops::{Range};
+
+////////////////////////////////////////////////////////////////////////////////
+/// TODO: message passing pipeline
+///   Verify a thread crashing with a lock and subsequent threads receiving
+///   invalid locks can communicate the new state (machine).
+///
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Game of life state machine.  Let's try and make this concept happen.
@@ -21,7 +30,7 @@ impl State {
         }
         self
     }
-    pub fn power     (self :& State) -> bool { self.power }
+    pub fn powered   (self :& State) -> bool { self.power }
     pub fn randomize (self :& State) -> bool { self.randomize }
 
     pub fn new () -> State {
@@ -40,8 +49,12 @@ impl State {
 
 /// Update/mutate the next gen of life in row 'bb' given the current
 /// row 'rb', the row above 'ra', and row below 'rc'.
-fn genRow (ra :&[i32], rb :&[i32], rc :&[i32], bb :&mut [i32]) {
-    let w = bb.len(); // width of row
+fn genNewRow (
+        w :usize,
+        ra :& Vec<i32>,
+        rb :& Vec<i32>,
+        rc :& Vec<i32>,
+        bb :&mut Vec<i32>) {
     let mut k = 0; // Column index
     // Sum of columns window
     let mut a = 0; // Not set initially
@@ -61,103 +74,148 @@ fn genRow (ra :&[i32], rb :&[i32], rc :&[i32], bb :&mut [i32]) {
     }
 }
 
-fn render (aa :&[i32], tb :&mut crate::term::Tbuff) {
-    let w = tb.cols();
-    for (i, c) in aa.iter().enumerate() {
-         if 0 != *c {
-            tb.set(i%w, i/w, 4, 12, ' ') // ▪ ◾ ◼ ■ █
-         } else {
-            //tb.set(i%w, i/w, 4, 11, '.')
-         }
+fn genNewRows (
+        aa      :& Arena,
+        bb      :& Arena,
+        range   :Range<usize>,
+        h       :usize,
+        w       :usize,
+        threads :&mut Vec<JoinHandle<()>>) {
+    for i in range { // Over all terminal rows...
+        let ra = aa.clone();
+        let rb = aa.clone();
+        let rc = aa.clone();
+        let row = bb.clone();
+        threads.push(
+            spawn( move || {
+                loop {
+                    // Lock the three rows from aa or retry...
+                    let ral = ra[(i+h-1) % h].try_lock(); if ral.is_err() { continue }
+                    let rbl = rb[i].try_lock();           if rbl.is_err() { continue }
+                    let rcl = rc[(i+1) % h].try_lock();   if rcl.is_err() { continue }
+                    let rowl = row[i].try_lock();         if rowl.is_err() { continue }
+                    genNewRow(w,
+                        & ral.unwrap(),
+                        & rbl.unwrap(),
+                        & rcl.unwrap(),
+                        &mut rowl.unwrap());
+                    break;
+                }
+            })//.join().unwrap();
+        );
     }
 }
 
+type Arena = Arc<Vec<Mutex<Vec<i32>>>>;
+
+fn arena_render (aa :&Arena, tb :&mut crate::term::Tbuff) {
+    for y in (0..tb.rows()).rev() {
+        let row = aa[y].lock().unwrap();
+        for x in 0..tb.cols() {
+            if 0 != row[x] {
+                tb.set(x, y, 4, 12, '◼') // ▪ ◾ ◼ ■ █
+            } else {
+               //tb.set(x, y, 3, 0, ' ')
+            }
+       }
+    }
+}
+
+fn arena_randomize (bb :&Arena, height :usize, width :usize) {
+    for y in 0..height {
+        let mut row = bb[y].lock().unwrap();
+        for x in 0..width {
+            row[x] = if 0 == crate::ri32(10) { 1 } else { 0 };
+       }
+    }
+}
+
+const ARENA_HEIGHT :i32 = 423;
+const ARENA_WIDTH :i32 = 1430;
+
+fn arena_new () -> Arena  {
+    let mut arena = Arc::new(vec![]);
+    let rows = Arc::get_mut(&mut arena).unwrap();
+    for y in 0..ARENA_HEIGHT {
+        rows.push(
+            Mutex::new(
+                (y * ARENA_WIDTH .. y * ARENA_WIDTH + ARENA_WIDTH).map(|_| if 0 == crate::ri32(10) { 1 } else { 0 })
+                    .collect::<Vec<i32>>()));
+    }
+    return arena;
+}
 
 fn life () {
-    const Z :usize = 65536;
-    let mut rc_auff :Arc<[i32; Z]> = Arc::new([0; Z]);
-    let mut rc_buff :Arc<[i32; Z]> = Arc::new([0; Z]);
-    let epoch = ::std::time::SystemTime::now(); // For FPS calculation
-    let mut state = self::State::new();
+    // Coneable objects that can be passed to threads
+    let arena = arena_new();
+    let arenb = arena_new();
+    let arc_mut_tb = Arc::new(Mutex::new(crate::term::Tbuff::new()));
+
+    let mut state = State::new();
     let mut tick = 0;
-    let mut spin = 0; // keep track of busy waiting/spinning
+    let epoch = SystemTime::now(); // For FPS calculation
+    let mut threads :Vec<_> = vec!(spawn( || {} ));
 
-    // The Terminal Buffer needs to be mutexed
-    let arcm_tb = Arc::new(Mutex::new(crate::term::Tbuff::new()));
+    while state.powered() { // Loop until keypress 'q'
 
-    let mut t1 = std::thread::spawn( || {} ); // Placeholder
-
-    while state.power() { // Loop until keypress 'q'
-
+        //util::sleep(100);
+        
         let (w, h, z) = {
-            let mut tb = arcm_tb.lock().unwrap();
-            tb.reset(tick).dims() // Does need to be muteable
+            let mut tb = arc_mut_tb.lock().unwrap();
+            tb.reset(tick) // Need to be muteable
+              .dims()
         };
 
-        t1.join().unwrap(); // Wait for rendering thread to finish
         let (aa, bb) = // aa is the current arena (to read/dump), bb the next arena (to generate/overwrite)
             match 0 == tick & 1 {
-                true  => (Arc::clone(&rc_auff),
-                          loop {
-                              match Arc::get_mut(&mut rc_buff) {
-                                  Some(bb) => break bb,
-                                         _ => spin = spin + 1 } }),
-                false => (Arc::clone(&rc_buff),
-                          loop {
-                              match Arc::get_mut(&mut rc_auff) {
-                                  Some(bb) => break bb,
-                                         _ => spin = spin + 1 } })
+                true  => (&arena, &arenb),
+                false => (&arenb, &arena)
             };
 
         // Draw the arena in a separate thread.  There's no reason to join
         // on the thread since it has a lock on the Tbuff and will block
         // anyone wanting to write to it.
-        t1 = {
+        // Todo: 
+        // 
+        // Holds a lock on TB which is needed at the end of this loop in main thread
+        // Periodically lock on aa
+        threads.push({
             let aa = aa.clone();
-            let m_tb = arcm_tb.clone();
-            std::thread::spawn(move || {
+            let m_tb = arc_mut_tb.clone();
+            spawn(move || {
                 let mut tb = m_tb.lock().unwrap(); // Does need to be muteable
-                self::render(&aa[0..z], &mut tb);
+                arena_render(&aa, &mut tb);
                 tb.dump();
-                print!("\x1b[{}H\x1b[0;35m FPS:{:7.2} tick:{} spin:{} \x1b[40m  ", h-h, tick as f32 / epoch.elapsed().unwrap().as_secs() as f32, tick, spin);
+                print!("\x1b[0H\x1b[0;35m FPS:{:7.2} F:{} \x1b[40m  ", 1000.0 * tick as f32 / epoch.elapsed().unwrap().as_millis() as f32, tick);
                 tb.flush();
             })
-        };
+        });
 
+        //for _ in 0..threads.len() { threads.pop().unwrap().join().unwrap(); }
+
+        // Either randomize the visible field or compute next generation
         if state.randomize() {
-            // Randomize the field instead of computing next generation
-            for i in 0..z { bb[i] = if 0 == crate::ri32(10) { 1 } else { 0 } }
-            //auff.iter_mut().map( |i :&mut i32| *i = if 0 == crate::ri32(10) { 1 } else { 0 } ).count();
+            arena_randomize(bb, h, w);
         } else {
-            let aa = &aa[0..z];
-            // Compute next generation
-            let mut ri = 0; // Consider 2nd row index
-            // Initialize row references for life computation (last row, 1st, and 2nd)
-            let mut ra = &[][..]; // Not set now
-            let mut rb = &aa[z-w .. z ]; // last row
-            let mut rc = &aa[0   .. w ]; // first row
-            let rfirst = rc;
-            for i in 0..h { // Over all rows
-                ri = ri + w; // Increment index
-                // Shift rows up
-                ra = rb;
-                rb = rc;
-                rc = &aa[if ri < z {
-                            ri .. ri+w // Next row
-                         } else {
-                            0 .. w  // Wrap around to first row
-                         }];
-                self::genRow(ra, rb, rc, &mut bb[ri-w .. ri]);
-            }
+            genNewRows(aa, bb, 0..h/2, h, w, &mut threads);
+            genNewRows(aa, bb, h/2..h, h, w, &mut threads);
         }
 
+        for _ in 0..threads.len() { threads.pop().unwrap().join().unwrap(); }
+
         tick = tick + 1;
-        state.next(& arcm_tb.lock().unwrap()); // Doesn't need to be mutable
+        state.next(& arc_mut_tb.lock().unwrap()); // Needs to be mutable
     }
-    arcm_tb.lock().unwrap().done(); // Doesn't need to be mutable
+    arc_mut_tb.lock().unwrap().done(); // Doesn't need to be mutable
 }
 
 pub fn main () {
     ::std::println!("== {}:{} ::{}::main() ====", std::file!(), core::line!(), core::module_path!());
     self::life();
 }
+
+// Garbage
+
+// Spin until lock acquired
+//let mut spin = 0; // keep track of busy waiting/spinning
+//let bb = loop { match Arc::get_mut(&mut bb) { Some(bb) => break bb, _ => spin = spin + 1 } };

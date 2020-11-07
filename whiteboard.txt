@@ -48,3 +48,19 @@ vo -L
 var
 vv
 frame variable -L
+
+
+# Dealing with Deadlock
+
+Main
+TB---                                       ----
+
+Draw
+   TB----------------------------------------------
+   aa  -----  ---------  ----------  ------  ----
+
+Render
+   aa
+   aa
+   aa
+   bb
