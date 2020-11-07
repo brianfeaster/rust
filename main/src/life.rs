@@ -81,34 +81,33 @@ fn genNewRows (
         h       :usize,
         w       :usize,
         threads :&mut Vec<JoinHandle<()>>) {
-    for i in range { // Over all terminal rows...
-        let ra = aa.clone();
-        let rb = aa.clone();
-        let rc = aa.clone();
-        let row = bb.clone();
-        threads.push(
-            spawn( move || {
-                loop {
-                    // Lock the three rows from aa or retry...
-                    let ral = ra[(i+h-1) % h].try_lock(); if ral.is_err() { continue }
-                    let rbl = rb[i].try_lock();           if rbl.is_err() { continue }
-                    let rcl = rc[(i+1) % h].try_lock();   if rcl.is_err() { continue }
-                    let rowl = row[i].try_lock();         if rowl.is_err() { continue }
-                    genNewRow(w,
-                        & ral.unwrap(),
-                        & rbl.unwrap(),
-                        & rcl.unwrap(),
-                        &mut rowl.unwrap());
-                    break;
-                }
-            })//.join().unwrap();
-        );
-    }
+    let ra = aa.clone();
+    let rb = aa.clone();
+    let rc = aa.clone();
+    let row = bb.clone();
+    threads.push(spawn( move || {
+        for i in range { // Over the rows...
+            loop { // Lock the four rows and generate new row or retry...
+                let ral = ra[(i+h-1) % h].try_lock(); if ral.is_err() { print!("!"); continue }
+                let rbl = rb[i].try_lock();           if rbl.is_err() { print!("!"); continue }
+                let rcl = rc[(i+1) % h].try_lock();   if rcl.is_err() { print!("!"); continue }
+                let rowl = row[i].try_lock();         if rowl.is_err() { print!("!"); continue }
+                genNewRow(w,
+                    & ral.unwrap(),
+                    & rbl.unwrap(),
+                    & rcl.unwrap(),
+                    &mut rowl.unwrap());
+                break;
+            }
+        }
+    }));
 }
 
 type Arena = Arc<Vec<Mutex<Vec<i32>>>>;
 
-fn arena_render (aa :&Arena, tb :&mut crate::term::Tbuff) {
+fn arena_render (
+        aa :&Arena,
+        tb :&mut crate::term::Tbuff) {
     for y in (0..tb.rows()).rev() {
         let row = aa[y].lock().unwrap();
         for x in 0..tb.cols() {
@@ -154,23 +153,26 @@ fn life () {
     let mut state = State::new();
     let mut tick = 0;
     let epoch = SystemTime::now(); // For FPS calculation
-    let mut threads :Vec<_> = vec!(spawn( || {} ));
+    let mut threads :Vec<JoinHandle<()>> = vec!();
 
-    while state.powered() { // Loop until keypress 'q'
+    while state.powered() && tick < 10000 { // Loop until keypress 'q'
 
         //util::sleep(100);
         
+        let (aa, bb) = // aa is the current arena (to read/dump), bb the next arena (to generate/overwrite)
+            match 0 == tick & 1 {
+                true  => (&arena, &arenb),
+                false => (&arenb, &arena)
+            };
+
+        for _ in 0..threads.len() { threads.pop().unwrap().join().unwrap(); }
+
         let (w, h, z) = {
             let mut tb = arc_mut_tb.lock().unwrap();
             tb.reset(tick) // Need to be muteable
               .dims()
         };
 
-        let (aa, bb) = // aa is the current arena (to read/dump), bb the next arena (to generate/overwrite)
-            match 0 == tick & 1 {
-                true  => (&arena, &arenb),
-                false => (&arenb, &arena)
-            };
 
         // Draw the arena in a separate thread.  There's no reason to join
         // on the thread since it has a lock on the Tbuff and will block
@@ -179,34 +181,51 @@ fn life () {
         // 
         // Holds a lock on TB which is needed at the end of this loop in main thread
         // Periodically lock on aa
-        threads.push({
-            let aa = aa.clone();
-            let m_tb = arc_mut_tb.clone();
-            spawn(move || {
-                let mut tb = m_tb.lock().unwrap(); // Does need to be muteable
-                arena_render(&aa, &mut tb);
-                tb.dump();
-                print!("\x1b[0H\x1b[0;35m FPS:{:7.2} F:{} \x1b[40m  ", 1000.0 * tick as f32 / epoch.elapsed().unwrap().as_millis() as f32, tick);
-                tb.flush();
-            })
-        });
+        //threads.push({
+        //    let aa = aa.clone();
+        //    let m_tb = arc_mut_tb.clone();
+        //    spawn(move || {
+        //        let mut tb = m_tb.lock().unwrap(); // Does need to be muteable
+        //        arena_render(&aa, &mut tb);
+        //        tb.dump().flush();
+        //        println!("\x1b[0H\x1b[0;35m FPS:{:7.2} F:{} \x1b[40m  ", 1000.0 * tick as f32 / epoch.elapsed().unwrap().as_millis() as f32, tick);
+        //    })
+        //});
 
-        //for _ in 0..threads.len() { threads.pop().unwrap().join().unwrap(); }
 
         // Either randomize the visible field or compute next generation
         if state.randomize() {
             arena_randomize(bb, h, w);
         } else {
-            genNewRows(aa, bb, 0..h/2, h, w, &mut threads);
-            genNewRows(aa, bb, h/2..h, h, w, &mut threads);
+            //genNewRows(aa, bb, 0..h, h, w, &mut threads); // 11.7k
+
+            //genNewRows(aa, bb, 0   .. h/2, h, w, &mut threads); // 6.6k
+            //genNewRows(aa, bb, h/2 .. h,   h, w, &mut threads);
+
+            //genNewRows(aa, bb, 0     .. h/3,   h, w, &mut threads); // 4.6k
+            //genNewRows(aa, bb, h/3   .. h*2/3, h, w, &mut threads);
+            //genNewRows(aa, bb, h*2/3 .. h,     h, w, &mut threads);
+
+            genNewRows(aa, bb, h*0/4 .. h*1/4, h, w, &mut threads); // 3.8k
+            genNewRows(aa, bb, h*1/4 .. h*2/4, h, w, &mut threads);
+            genNewRows(aa, bb, h*2/4 .. h*3/4, h, w, &mut threads);
+            genNewRows(aa, bb, h*3/4 .. h*4/4, h, w, &mut threads);
+
+            //genNewRows(aa, bb, h*0/5 .. h*1/5, h, w, &mut threads); // 4.2k
+            //genNewRows(aa, bb, h*1/5 .. h*2/5, h, w, &mut threads);
+            //genNewRows(aa, bb, h*2/5 .. h*3/5, h, w, &mut threads);
+            //genNewRows(aa, bb, h*3/5 .. h*4/5, h, w, &mut threads);
+            //genNewRows(aa, bb, h*4/5 .. h*5/5, h, w, &mut threads);
+
         }
 
-        for _ in 0..threads.len() { threads.pop().unwrap().join().unwrap(); }
+        //for _ in 0..threads.len() { threads.pop().unwrap().join().unwrap(); }
 
         tick = tick + 1;
         state.next(& arc_mut_tb.lock().unwrap()); // Needs to be mutable
     }
     arc_mut_tb.lock().unwrap().done(); // Doesn't need to be mutable
+    println!("{}", epoch.elapsed().unwrap().as_millis());
 }
 
 pub fn main () {
