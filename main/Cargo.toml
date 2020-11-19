@@ -10,8 +10,8 @@ edition = "2018"
 ipc = { path = "../ipc" }
 util = { path = "../util" }
 libc = "0.2"
+#env = "0.0.0"
 log = "0.4.11"
-env = "0.0.0"
 pretty_env_logger = "0.4.0"
 rand = "0.7.3"
 json = "0.12.4"

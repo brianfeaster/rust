@@ -231,14 +231,15 @@ pub fn r64(m: f32) -> f64 { ::rand::random::<f64>() * m as f64 }
 // Play with Graphics
 //
 
+/// Iterator for walking around a box
 #[derive(Debug, Clone, Copy)]
 struct MarchBox {
-    width: i64,
+    width: i64, // Box Dimension
     height: i64,
-    x: i64,
+    x: i64, // Current location
     y: i64,
-    skip: i64,
-    dir: usize,
+    skip: i64, // Step
+    dir: usize, // Current edge
 }
 
 impl Iterator for MarchBox {
@@ -284,7 +285,7 @@ impl Iterator for MarchBox {
 /// Create a Piston window and draw things on it.
 pub fn fun_piston() {
     let W: i64 = 800;
-    let H: i64 = 600;
+    let H: i64 = 700;
     let mut count: i32 = 0;
     let mut mb = MarchBox {
         width: W,
@@ -301,6 +302,14 @@ pub fn fun_piston() {
         .unwrap();
     let mut kolor = [crate::r32(1.0), crate::r32(1.0), crate::r32(1.0), 1.0];
     let mut next = mb.next().unwrap();
+    let de : Event = loop {
+        match window.next() {
+            Some(event) => {
+                if event.render_args() != None { break event }
+            },
+            _ => { }
+        }
+    };
 
     while let Some(event) = window.next() {
         if event.text_args() != None && event.text_args().unwrap() == "q" { break; }
@@ -312,14 +321,15 @@ pub fn fun_piston() {
              _device| {
                 line(
                     kolor,
-                    20.0,
+                    2.0,
                     [W as f64/2.0, H as f64/2.0, next[0], next[1]],
                     context.transform,
                     graphics,
                 );
             },
         );
-        if 1 == count%2 {
+        //util::sleep(100);
+        if 1 == count % 2 {
             kolor = [crate::r32(1.0), crate::r32(1.0), crate::r32(1.0), 1.0];
             next = mb.next().unwrap();
             //window.set_title(format!("{:?}", kolor));
@@ -340,5 +350,5 @@ pub fn main() {
     //fun_walk_iter();
     //fun_read_file_pair();
     //for e in fun_read_poly_file("ship.dat") { println!("{:?}", e); }
-    //fun_piston();
+    fun_piston();
 }

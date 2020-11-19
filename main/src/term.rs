@@ -224,7 +224,7 @@ const GLYPH_BLANK :Glyph = Glyph{ch:' ', bg:0, fg:0, tick:0};
 #[derive(Debug)]
 pub struct Tbuff {
     buff: Vec<Glyph>,
-    term: Term,
+    pub term: Term,
     tick: usize
 }
 
@@ -256,6 +256,19 @@ impl Tbuff {
         return self;
     }
 
+    pub fn reset_size_and_tick (self: &mut Tbuff, width :usize, height :usize) -> &Self {
+        self.tick += 1;
+        let gen = self.tick & 1;
+        if self.term.termsizeset(width, height) {
+            self.buff.resize((self.term.count() * 2) as usize, GLYPH_NONE);
+            for i in 0..self.term.count() { // Set current and previous glyphs at each cell
+                self.buff[(2*i + gen)] = GLYPH_BLANK;
+                self.buff[(2*i + gen^1)] = GLYPH_NONE;
+            }
+        }
+        return self;
+    }
+
     pub fn set (self: &mut Tbuff, x:usize, y:usize, bg:i32, fg:i32, ch:char){
         let idx =
             (  x.rem_euclid(self.cols())
@@ -277,33 +290,17 @@ impl Tbuff {
         }
     }
     
-    // Delta buffer -> terminal dumper
-    // If the glyph's tick matches current tick, then dump gyph (this glyph was updated)
-    // If the ticks don't match, assume a previous cell that should be erased
-    //   If already erased
-    // reset   tick=1
-    // [ ,-1]  [A,1]
-    //   init  renderi
-    
+    /// Plot to non-terminal display device
     pub fn dumpPiston (
-        self :&mut Tbuff,
-        context :piston_window::Context,
+        self     :&mut Tbuff,
+        context  :piston_window::Context,
         graphics :&mut G2d
-    ) -> &Self
-    {
-        let mut lbg: i32 = -1;
-        let mut lfg: i32 = -1;
-        let mut cb :[u8;4] = [0,0,0,0];
-        //if let Err(_e) = stdout().write("\x1b[H\x1b[0m".as_bytes()) {
-        //   util::flush();
-        //}
+    ) -> &Self {
         let ticknow = self.tick&1;
-        let tickback = ticknow ^ 1;
-        let mut glyph : Glyph = Glyph{ch:' ', bg:0, fg:0, tick:0};
+        let tickbak = ticknow ^ 1;
         let mut col=0;
         let mut row=0;
-        let mut rowlast=0;
-        let mut skipped = 0;
+        //clear([0.0, 0.0, 0.0, 1.0], graphics);
         for i in 0..self.buff.len()/2 {
             // This glyph wasn't updated this tick.  So it's assumed to be a blank now.
             if self.buff[i*2+ticknow].tick != self.tick {
@@ -311,82 +308,37 @@ impl Tbuff {
                 self.buff[i*2+ticknow].bg = 0;
                 self.buff[i*2+ticknow].fg = 0;
             }
-            // Plot to non-terminal display device
-            if self.buff[i*2+ticknow].ch != ' ' { // Consider current glyph character in the current (double) buffer
+            let tnow = self.buff[i*2+ticknow].ch;
+            let tbak = self.buff[i*2+tickbak].ch;
+            if tnow != tbak {
                 rectangle(
-                    [ 0.0, 0.5, 0.0, 1.0 ],
-                    [ col as f64 * 5.0 - 1.0, row as f64 * 7.0 - 1.0,
-                      6.0,                    8.0 ],
-                    context.transform,
-                    graphics);
-                rectangle(
-                    [ 0.0, 1.0, 0.0, 1.0] ,
-                    [ col as f64 * 5.0 , row as f64 * 7.0 ,
-                      4.0,               6.0 ],
+                    if tnow != ' ' { [ 0.0, 0.0, 1.0, 1.0 ] } else { [ 0.0, 0.0, 0.0, 1.0 ] },
+                    [ col as f64 * 6.0, row as f64 * 6.0,
+                    6.0,                6.0],
                     context.transform,
                     graphics);
             }
-            if self.buff[i*2+ticknow].ch == self.buff[i*2+tickback].ch &&
-               self.buff[i*2+ticknow].bg == self.buff[i*2+tickback].bg &&
-               self.buff[i*2+ticknow].fg == self.buff[i*2+tickback].fg {
-                skipped += 1;
-            }  else {
-                if skipped != 0 {
-                    let m = if rowlast != row {
-                        format!("\x1b[{};{}H", row+1, col+1)
-                    } else {
-                        format!("\x1b[{}C", skipped)
-                    };
-                    match stdout().write(m.as_bytes()) {
-                      Ok(_o) => { }
-                      Err(_e) => { }
-                    }
-                }
-                skipped = 0;
-                rowlast = row;
-                // Current and last glyph don't match, so render.
-                glyph = self.buff[i*2+ticknow];
-                // Current and last glyph match, so skip
-                if lfg != glyph.fg  && glyph.ch != ' '{
-                    lfg = glyph.fg;
-                    let bs = if lfg < 8 {
-                        format!("\x1b[3{}m", lfg)
-                    } else if lfg < 256 {
-                        format!("\x1b[38;5;{}m", lfg)
-                    } else {
-                        format!("\x1b[48;2;{};{};{}m", lbg/65536, (lbg/256)%256, lbg%256)
-                    };
-                    match stdout().write(bs.as_bytes()) {
-                      Ok(o) => { if o != bs.len() { util::flush(); println!("{} != {}", bs.len(), o); util::flush(); util::sleep(5000); }},
-                      Err(_e) => { util::flush(); }
-                    }
-                }
-                if lbg != glyph.bg {
-                    lbg = glyph.bg;
-                    let bs = if lbg < 8 { // 16 color
-                        format!("\x1b[4{}m", lbg)
-                    } else if  lbg < 256 { // 256 color
-                        format!("\x1b[48;5;{}m", lbg)
-                    } else { // 16M color
-                        format!("\x1b[48;2;{};{};{}m", lbg/65536, (lbg/256)%256, lbg%256)
-                    };
-                    match stdout().write(bs.as_bytes()) {
-                      Ok(o) => { if o != bs.len() { util::flush(); println!("{} != {}", bs.len(), o); util::flush(); util::sleep(5000); }},
-                      Err(_e) => { util::flush(); }
-                    }
-                }
-                let bs = glyph.ch.encode_utf8(&mut cb).as_bytes();
-                match stdout().write(bs)  {
-                    Ok(o) => { if o != bs.len() { util::flush(); println!("{} != {}", bs.len(), o); util::flush(); util::sleep(5000); }},
-                    Err(_e) => { util::flush(); }
-                }
-            }
+            /* else { // color unchanged
+                rectangle(
+                    [ 0.0, 0.1, 0.0, 1.0 ],
+                    [ col as f64 * 6.0, row as f64 * 6.0,
+                    6.0,                6.0],
+                    context.transform,
+                    graphics);
+            } */
             col += 1;
             if col == self.term.cols() { col = 0; row += 1; } 
         }
         return self;
-    } // Tbuff::dump
+    } // Tbuff::dumpPiston
 
+    /// Delta buffer -> terminal dumper
+    /// If the glyph's tick matches current tick, then dump gyph (this glyph was updated)
+    /// If the ticks don't match, assume a previous cell that should be erased
+    ///   If already erased
+    /// reset   tick=1
+    /// [ ,-1]  [A,1]
+    ///   init  renderi
     pub fn dump (self :&mut Tbuff) -> &Tbuff {
         let mut lbg: i32 = -1;
         let mut lfg: i32 = -1;
