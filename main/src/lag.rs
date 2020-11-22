@@ -1,4 +1,4 @@
-use crate::term::{self, Tbuff}; // Module path prefix "crate::"" and "self::"" are pedantic.
+use ::term::{self, Tbuff}; // Module path prefix "crate::"" and "self::"" are pedantic.
 use ::util;
 use ::piston_window::*;
 

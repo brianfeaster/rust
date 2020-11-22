@@ -12,7 +12,7 @@ use ::util::{self};
 use ::ipc::{Ipc, IpcMsg};
 
 // Local workspace's member's crate's mod-ules -- Specified in main.rs's lib.rs mod
-use crate::term::{self};
+use ::term::{self};
 use crate::lag::{self, Shape, EntityCast, Entity, Entities};
 
 fn load_polygon (filename :&str) -> (Vec<[f32; 4]>, Vec<i32>, Vec<i32>) {
@@ -203,7 +203,7 @@ pub fn asciiteroids (rx: Receiver<Ipc>) {
     let mut power = true;
     let mut pause = false;
     let mut tick :usize = 1;
-    let mut tb = term::Tbuff::new();
+    let mut tb = ::term::Tbuff::new();
     let mut entities  = Entities::new();
     let mut rng = rand::thread_rng();
     let mut ipc :Option<Ipc> = None;

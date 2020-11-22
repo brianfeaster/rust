@@ -17,7 +17,7 @@ use ::piston_window::*;
 struct State {
     power :bool,
     randomize :bool,
-    spin: usize,
+    delta: usize,
     tick: usize,
     key: String,
     width: usize,
@@ -26,16 +26,22 @@ struct State {
 }
 
 impl State {
+    /*
     pub fn next (self :&mut State,
-                 tb :& crate::term::Tbuff) -> &State {
+                 tt :& crate::term::Tbuff) -> &State {
         self.tick += 1;
         //self.randomize = false;
-        self.key = tb.getc();
+        self.key = tt.getc();
         match self.key.as_str() {
             "q" => self.power = false,
             " " => self.randomize = true,
             _ => ()
         }
+        self
+    */
+    pub fn next (self :&mut State) -> &State {
+        self.tick += 1;
+        //self.randomize = false;
         self
     }
     pub fn powered (self :& State) -> bool { self.power }
@@ -52,10 +58,10 @@ impl State {
             tick :0,
             randomize :true,
             key  :"".to_string(),
-            spin: 0,
+            delta: 0,
             width: 0,
             height: 0,
-            threads: 1
+            threads: 8
         }
     }
 }
@@ -151,17 +157,11 @@ type Arena = Arc<Vec<Mutex<Vec<i32>>>>;
 
 fn arena_render (
     aa :&Arena,
-    tt :&mut crate::term::Tbuff
+    tt :&mut crate::dbuff::Dbuff
 ) {
-    for y in (0..tt.rows()).rev() {
+    for y in (0..aa.len()).rev() {
         let row = aa[y].lock().unwrap();
-        for x in 0..tt.cols() {
-            if 0 != row[x] {
-                tt.set(x, y, 4, 12, '◼') // ▪ ◾ ◼ ■ █
-            } else {
-               //tt.set(x, y, 3, 0, ' ')
-            }
-       }
+        tt.put(&row);
     }
 }
 
@@ -201,14 +201,17 @@ fn life () {
     // Coneable objects that can be passed to threads
     let arena :Arena = arena_new();
     let arenb :Arena = arena_new();
-    let mut ta = crate::term::Tbuff::new();
-    let mut tb = crate::term::Tbuff::new();
+    let arenaSize = ARENA_WIDTH * ARENA_HEIGHT;
+    //let tbuff = ::term::Tbuff::new(); // Asynchronous keyboard reads
+    let mut dbuffa = crate::dbuff::Dbuff::new(arenaSize);
+    let mut dbuffb = crate::dbuff::Dbuff::new(arenaSize);
     let mut state :State = State::new();
     let epoch :SystemTime = SystemTime::now(); // For FPS calculation
     let mut threads :Vec<JoinHandle<()>> = vec!();
     let mut pwin :PistonWindow =
         WindowSettings::new("ASCIIRhOIDS", [256 as u32, 256 as u32])
-            .exit_on_esc(true)
+            //.exit_on_esc(true)
+            .size(piston_window::Size{width :1200_f64, height :600_f64})
             .decorated(true)
             .build()
             .unwrap();
@@ -219,17 +222,16 @@ fn life () {
 
     while state.powered() && state.tick < 50000 { // Loop until keypress 'q'
 
-        //util::sleep(200);
+        //::util::sleep(200);
         
-        let (aa, bb, tt) = // aa is the current arena (to read/dump), bb the next arena (to generate/overwrite)
+        let (aa, bb) = // aa is the current arena (to read/dump), bb the next arena (to generate/overwrite)
             match 0 == state.tick & 1 {
-                true  => (&arena, &arenb, &mut ta),
-                false => (&arenb, &arena, &mut tb)
+                true  => (&arena, &arenb),
+                false => (&arenb, &arena)
             };
 
         let h = state.height;
         let w = state.width;
-        tt.reset_size_and_tick(w, h);
 
         // Draw a glider periodically
         if 0 == state.tick % 14 { draw_glider(aa, 5, 5); }
@@ -316,7 +318,7 @@ fn life () {
             } // match
         }
 
-        for _ in 0..threads.len() { threads.pop().unwrap().join().unwrap(); }
+        //for _ in 0..threads.len() { threads.pop().unwrap().join().unwrap(); }
 
         /* Ghetto dump arena
         for y in 0..24 {
@@ -330,28 +332,38 @@ fn life () {
         */
 
         // Draw the arena.
-        let render =
-            0 == state.tick % 1;
+        let render = 0 == state.tick % 1;
 
         if render {
-            arena_render(&aa, tt);
+            let tt =
+                match (dbuffa.tick + dbuffb.tick) & 1 {
+                    0 => &mut dbuffa,
+                    _ => &mut dbuffb
+                };
             while let Some(event) = pwin.next() {
-                //println!("{:?}", event);
-                //if event.idle_args() != None { break; }
+                //::log::info!("{:?}", event);
+                if event.idle_args() != None { break; }
+                if event.resize_args() != None {
+                    ::log::info!("{:?}", event);
+                }
+                if event.button_args() != None {
+                    if event.button_args().unwrap().button == Button::Keyboard(Key::Escape) { state.power = false; }
+                }
                 if event.text_args() != None {
                     if event.text_args().unwrap() == "q" { state.power = false; }
                     if event.text_args().unwrap() == " " { state.randomize = true; }
                 } else if event.render_args() != None {
-                    if render {
-                        pwin.draw_2d(
-                            &event,
-                            |context: piston_window::Context,
-                             graphics,
-                             _device| {
-                                tt.dumpPiston(context, graphics);
-                            }
-                        );
-                    }
+                    arena_render(&aa, tt); // Copy to delta frame buffer
+                    state.delta = 0;
+                    pwin.draw_2d(
+                        &event,
+                        |context: piston_window::Context,
+                            graphics,
+                            _device| {
+                            tt.dumpPiston(&mut state.delta, w, h, context, graphics);
+                        }
+                    );
+                    tt.tick();
                     break;
                 }
             } // while event
@@ -359,17 +371,19 @@ fn life () {
 
         //tt.dump().flush();
         if 0 == state.tick % 100  {
-            print!("\n\x1b[0;35m t:{} FPS:{:7.2} F:{} S:{}\x1b[40m  ",
+            print!("\n\x1b[0;35m t:{} FPS:{:7.2} F:{} D:{} S:{}\x1b[40m  ",
                 state.threads,
                 1000.0 * state.tick as f32 / epoch.elapsed().unwrap().as_millis() as f32,
                 state.tick,
+                state.delta,
                 spins.lock().unwrap());
-            util::flush();
+            ::util::flush();
         }
 
-        state.next(&tt); // Needs to be mutable
+        //state.next(&tbuff); // Needs to be mutable
+        state.next();
     }
-    ta.done();
+    //tbuff.done(); // Reset terminal
     println!("{}", epoch.elapsed().unwrap().as_millis());
 }
 
@@ -397,7 +411,7 @@ pub fn testA () {
     println!("{:?}", &C);
     println!("{:?}", &D);
     println!("{:?}\x1b[H", &E);
-    util::sleep(100);
+    ::util::sleep(100);
     genNewRow(5, &E, &A, &B, &mut a);
     genNewRow(5, &A, &B, &C, &mut b);
     genNewRow(5, &B, &C, &D, &mut c);
@@ -408,7 +422,7 @@ pub fn testA () {
     println!("{:?}", &c);
     println!("{:?}", &d);
     println!("{:?}\x1b[H", &e);
-    util::sleep(100);
+    ::util::sleep(100);
     }
 }
 

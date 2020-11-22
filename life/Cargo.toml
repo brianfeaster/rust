@@ -1,0 +1,12 @@
+[package]
+name = "life"
+version = "0.0.0"
+authors = ["b f <brianf@geemale.kom>"]
+edition = "2018"
+
+[dependencies]
+util = { path = "../util" }
+log = "0.4.11"
+pretty_env_logger = "0.4.0"
+rand = "0.7.3"
+piston_window = "0.113.0"

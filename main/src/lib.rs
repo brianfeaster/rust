@@ -1,10 +1,9 @@
 #![allow(dead_code, unused_assignments, unused_imports, unused_variables, non_snake_case)]
 
 // Bind the following modules to crate::
-pub mod term;
+//pub mod term;
 mod lag;
 pub mod fun;
-mod life;
 mod asciirhoids;
 
 //use crate::term::{Tbuff}; // Module path prefix "crate::"" and "self::"" are pedantic.
@@ -23,62 +22,9 @@ use ::log::*;
 /// Create a random f32 number
 pub fn r32(m: f32) -> f32 { ::rand::random::<f32>() * m }
 
-/// Create random i32
-pub fn ri32(m: i32) -> i32 { (::rand::random::<f32>() * m as f32) as i32 }
-
 /// Create a random f64 number
 pub fn r64(m: f32) -> f64 { ::rand::random::<f64>() * m as f64 }
 
-
-/// Enhance Tbuff struct with more useful methods.
-/// 
-impl crate::term::Tbuff {
-
-    fn clear (self  :&mut term::Tbuff,
-            bg    :i32,
-            fg    :i32,
-            ch    :char) -> &mut Self {
-        for y in 0..(self.rows()-0) {
-            for x in 0..self.cols() {
-                self.set(x, y, bg, fg, ch);
-            }
-        }
-        return self;
-    }
-
-    fn draw_axis (self :&mut term::Tbuff) -> &mut Self{
-        for y in 0..(self.rows()-0) {
-            self.set(0, y, 0, 8, '|'); 
-        }
-    
-        for x in 0..self.cols() {
-            self.set(x, 0, 0, 8, '-');
-        }
-        self.set(0, 0 , 0, 8, '+');
-        return self;
-    }
-
-    fn draw_background_sinies (
-            self : &mut term::Tbuff,
-            z    : i32) -> &mut Self {
-        for y in 0..self.rows() {
-            let h = 0.1 + 0.3 * ( 0.1 * (z as f32)).sin();
-            let g = (6.28 / (24.0 + h) * (y as f32 * 95.0 + z as f32)).sin();
-            for x in 0..self.cols() {
-                let k = 0.3 + 0.3 * ( 0.1 * (z as f32)).sin();
-                let j = (6.28 / (48.0 + k) * (y as f32 * 95.0 + x as f32+ z as f32)).sin();
-                //let n = ((g + j) / 2.0 * 127.99 + 128.0) as i32;
-                //let bg = (n/3) % 256;
-                //self.set(x, y, bg*65536 + bg*256 + bg, bg*65536 + bg*256 + bg, ' '); 
-                let n = ((g + j) / 2.0 * 11.99 + 12.0) as i32;
-                let bg = (n/3) % 24 + 232;
-                self.set(x, y, bg, bg, '.'); 
-            }
-        }
-        return self;
-    }
-
-} // impl term::Tbuff
 
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -358,5 +304,5 @@ pub fn main () {
     //println!("map {:?}", ('🐘' .. '🐷').map(|x| (|x| x)(x)).collect::<Vec<char>>()); // type std::ops::RangeInclusive
     //crate::lag::main();
     //crate::fun::main();
-    crate::life::main();
+    //::term::main();
 }

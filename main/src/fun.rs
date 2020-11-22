@@ -3,7 +3,7 @@
 use ::std::{fs, thread};
 use ::piston_window::*;
 use ::util::{self};
-use crate::term::Term;
+use ::term::{Term};
 
 fn fun_split_helper (v :&mut Vec<i32>) {
     v[0] = 200;

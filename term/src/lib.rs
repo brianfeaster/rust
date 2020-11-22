@@ -1,4 +1,4 @@
-#![allow(dead_code, non_snake_case)]
+#![allow(dead_code, non_snake_case, unused_assignments)]
 
 use ::util;
 use ::std::fmt;
@@ -156,7 +156,7 @@ impl Term {
             loop {
                 let s :String = Term::getc_actual(); // Blocking read.
                 if s.is_empty() {
-                    eprintln!("crate::term::Term::new - thread Term::getc_actual is empty...looping...");
+                    eprintln!("::term::Term::new - thread Term::getc_actual is empty...looping...");
                     util::sleep(50);
                 } else {
                   //println!("'TERM{} {}'", s, s.len());
@@ -446,8 +446,59 @@ impl Tbuff {
     }
 } // impl Tbuff
 
-/// //////////// Test bf: /////////////////
+/// Enhance Tbuff struct with more useful methods.
 /// 
+impl Tbuff {
+
+    fn clear (self :&mut Tbuff,
+            bg    :i32,
+            fg    :i32,
+            ch    :char) -> &mut Self {
+        for y in 0..(self.rows()-0) {
+            for x in 0..self.cols() {
+                self.set(x, y, bg, fg, ch);
+            }
+        }
+        return self;
+    }
+
+    fn draw_axis (self :&mut Tbuff) -> &mut Self{
+        for y in 0..(self.rows()-0) {
+            self.set(0, y, 0, 8, '|'); 
+        }
+    
+        for x in 0..self.cols() {
+            self.set(x, 0, 0, 8, '-');
+        }
+        self.set(0, 0 , 0, 8, '+');
+        return self;
+    }
+
+    fn draw_background_sinies (
+            self : &mut Tbuff,
+            z    : i32) -> &mut Self {
+        for y in 0..self.rows() {
+            let h = 0.1 + 0.3 * ( 0.1 * (z as f32)).sin();
+            let g = (6.28 / (24.0 + h) * (y as f32 * 95.0 + z as f32)).sin();
+            for x in 0..self.cols() {
+                let k = 0.3 + 0.3 * ( 0.1 * (z as f32)).sin();
+                let j = (6.28 / (48.0 + k) * (y as f32 * 95.0 + x as f32+ z as f32)).sin();
+                //let n = ((g + j) / 2.0 * 127.99 + 128.0) as i32;
+                //let bg = (n/3) % 256;
+                //self.set(x, y, bg*65536 + bg*256 + bg, bg*65536 + bg*256 + bg, ' '); 
+                let n = ((g + j) / 2.0 * 11.99 + 12.0) as i32;
+                let bg = (n/3) % 24 + 232;
+                self.set(x, y, bg, bg, '.'); 
+            }
+        }
+        return self;
+    }
+
+} // impl term::Tbuff
+
+
+/// //////////// Test bf: /////////////////
+
 fn fun_tbuff(term : &mut Term) {
   term.termsizeset(2,2); // Force Term to a 2x2
   let ref mut b = Tbuff::new(); // Init

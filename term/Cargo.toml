@@ -1,0 +1,10 @@
+[package]
+name = "term"
+version = "0.0.0"
+authors = ["b f <brianf@geemale.kom>"]
+edition = "2018"
+
+[dependencies]
+util = { path = "../util" }
+libc = "0.2"
+piston_window = "0.113.0"

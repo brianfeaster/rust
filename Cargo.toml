@@ -5,7 +5,8 @@ authors = ["b f <brianf@geemale.kom>"]
 edition = "2018"
 
 [workspace]
-members = [ "main", "ipc", "util" ]
+members = [ "main", "life" ,"ipc", "util", "term" ]
 
 [dependencies]
-main = { path = "main" }
+#main = { path = "main" }
+life = { path = "life" }
