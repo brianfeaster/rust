@@ -1,6 +1,7 @@
 #![allow(dead_code, unused_variables, non_snake_case)]
 
 use ::std::{fs, thread};
+use ::std::ops::{Range};
 use ::piston_window::*;
 use ::util::{self};
 use ::term::{Term};
@@ -283,7 +284,7 @@ impl Iterator for MarchBox {
 }
 
 /// Create a Piston window and draw things on it.
-pub fn fun_piston() {
+pub fn fun_piston_walk() {
     let W: i64 = 800;
     let H: i64 = 700;
     let mut count: i32 = 0;
@@ -338,6 +339,44 @@ pub fn fun_piston() {
     }
 }
 
+
+pub fn fun_fizzbuzz() {
+    'main: for i in 1..=30 {
+        for p in [(15, "fizzbuzz"),
+                  (5, "buzz"),
+                  (3, "fizz")].iter()
+        {
+            if 0 == i % p.0 {
+                 println!("{}", p.1);
+                 continue 'main;
+            }
+        }
+        println!("{}", i);
+    }
+}
+////////////////////////////////////////////////////////////////////////////////
+// Learning
+//
+use ::std::ops::{Mul, MulAssign};
+
+#[derive(Debug)]
+enum Mat { Mat4([f64; 2]) }
+
+impl MulAssign<f64> for Mat {
+    fn mul_assign(&mut self, s:f64) {
+        let Mat::Mat4(m) = self;
+        m[0] *= s;
+        m[1] *= s;
+    }
+}
+
+fn fun_overload() {
+    let mut m = Mat::Mat4([1.0,2.0]);
+    m *= 11.0;
+    println!("{:?}", m);
+}
+
+////////////////////////////////////////////////////////////////////////////////
 pub fn main() {
     ::std::println!("== {}:{} ::{}::main() ====", std::file!(), core::line!(), core::module_path!());
     //let term = Term::new();
@@ -350,5 +389,8 @@ pub fn main() {
     //fun_walk_iter();
     //fun_read_file_pair();
     //for e in fun_read_poly_file("ship.dat") { println!("{:?}", e); }
-    fun_piston();
+    //fun_piston_walk();
+    //self::fun_fizzbuzz();
+    crate::matrix::main();
+    //crate::fun::fun_overload();
 }

@@ -9,6 +9,6 @@ fn main () {
     //::main::mainGravity();
     //::main::main(); // lib.rs via Cargo
     //::main::lag::main();
-    //::main::fun::main(); // lib.rs 'pub mod fun' adds fun to 
-    ::life::main();
+    ::adventofcode::main();
+    ::main::fun::main(); // lib.rs 'pub mod fun' adds fun to 
 }

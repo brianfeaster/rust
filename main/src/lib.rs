@@ -5,12 +5,14 @@
 mod lag;
 pub mod fun;
 mod asciirhoids;
+mod matrix;
 
 //use crate::term::{Tbuff}; // Module path prefix "crate::"" and "self::"" are pedantic.
 //use crate::lag::{Shape, Entity, Entities, EntityCast};
 
 use ::std::{
     fs,
+    thread::{spawn, JoinHandle},
     //collections::{HashMap},
     net::TcpListener,
     sync::mpsc::{channel, Receiver}};
@@ -19,13 +21,12 @@ use ::serde::{Serialize, Deserialize};
 use ::serde_json::{self as sj, Value, from_str, to_string_pretty};
 use ::log::*;
 
+
 /// Create a random f32 number
 pub fn r32(m: f32) -> f32 { ::rand::random::<f32>() * m }
 
 /// Create a random f64 number
 pub fn r64(m: f32) -> f64 { ::rand::random::<f64>() * m as f64 }
-
-
 
 ////////////////////////////////////////////////////////////////////////////////
 // A fun console Asteroids game
@@ -301,8 +302,10 @@ pub fn main () {
     ::std::println!("== {}:{} ::{}::main() ====", std::file!(), core::line!(), core::module_path!());
     //println!("{:?}", mainJson());
     //println!("!!! {:?}", mainJsonSerdes());
+    //::life::main();
+    //crate::mainAsteroid(); // ??? Is there a symbol to explicitly reference the root module or is "crate" and other modules the only symbols?  A: There are only crates and they canonically start with :: and create is the crate representing the current crate.
     //println!("map {:?}", ('🐘' .. '🐷').map(|x| (|x| x)(x)).collect::<Vec<char>>()); // type std::ops::RangeInclusive
     //crate::lag::main();
-    //crate::fun::main();
+    crate::fun::main();
     //::term::main();
 }

@@ -2,11 +2,10 @@
 
 use piston_window::*;
 
-/// 
 #[derive(Debug)]
 pub struct Dbuff {
-    buffa: Vec<i32>,
-    buffb: Vec<i32>,
+    pub buffa: Vec<i32>,
+    pub buffb: Vec<i32>,
     pub tick: usize // when tick is 0, buffa is brand new and buffb empty.
 }
 
@@ -33,38 +32,6 @@ impl Dbuff {
         println!("{:?}", self);
         self
     }
-
-    pub fn dumpPiston (
-        &self,
-        writes: &mut usize,
-        width  :usize,
-        height :usize,
-        context  :piston_window::Context,
-        graphics :&mut G2d
-    ) -> &Self {
-        let (ba, bb) = 
-            match self.tick & 1 {
-                0 => (&self.buffa, &self.buffb),
-                _ => (&self.buffb, &self.buffa)
-            };
-        let mut col=0;
-        let mut row=0;
-        //clear([0.0, 0.0, 0.0, 1.0], graphics);
-        for i in 0..width*height {
-            if ba[i] != bb[i] {
-                *writes += 1;
-                rectangle(
-                    if 0 != ba[i] { [ 0.0, 0.0, 1.0, 1.0 ] } else { [ 0.0, 0.0, 0.0, 1.0 ] },
-                    [ col as f64 * 6.0, row as f64 * 6.0,
-                    6.0,                6.0],
-                    context.transform,
-                    graphics);
-            }
-            col += 1;
-            if col == width { col = 0; row += 1; } 
-        }
-        return self;
-    } // Dbuff::dumpPiston
 
     /// Pub DBuff in a "all elemtns are different" state
     pub fn new (len :usize) -> Dbuff {

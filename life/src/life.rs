@@ -360,7 +360,7 @@ fn life () {
                         |context: piston_window::Context,
                             graphics,
                             _device| {
-                            tt.dumpPiston(&mut state.delta, w, h, context, graphics);
+                            dumpPiston(&tt, &mut state.delta, w, h, context, graphics);
                         }
                     );
                     tt.tick();
@@ -386,6 +386,37 @@ fn life () {
     //tbuff.done(); // Reset terminal
     println!("{}", epoch.elapsed().unwrap().as_millis());
 }
+
+pub fn dumpPiston (
+    this :&crate::dbuff::Dbuff,
+    writes: &mut usize,
+    width  :usize,
+    height :usize,
+    context  :piston_window::Context,
+    graphics :&mut G2d
+) {
+    let (ba, bb) = 
+        match this.tick & 1 {
+            0 => (&this.buffa, &this.buffb),
+            _ => (&this.buffb, &this.buffa)
+        };
+    let mut col=0;
+    let mut row=0;
+    //clear([0.0, 0.0, 0.0, 1.0], graphics);
+    for i in 0..width*height {
+        if ba[i] != bb[i] {
+            *writes += 1;
+            rectangle(
+                if 0 != ba[i] { [ 0.0, 0.0, 1.0, 1.0 ] } else { [ 0.0, 0.0, 0.0, 1.0 ] },
+                [ col as f64 * 6.0, row as f64 * 6.0,
+                6.0,                6.0],
+                context.transform,
+                graphics);
+        }
+        col += 1;
+        if col == width { col = 0; row += 1; } 
+    }
+} // Dbuff::dumpPiston
 
 pub fn testA () {
     let mut a = vec!(0,0,0,0,0);
