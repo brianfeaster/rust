@@ -10,5 +10,5 @@ fn main () {
     //::main::main(); // lib.rs via Cargo
     //::main::lag::main();
     ::adventofcode::main();
-    ::main::fun::main(); // lib.rs 'pub mod fun' adds fun to 
+    //::main::fun::main(); // lib.rs 'pub mod fun' adds fun to 
 }

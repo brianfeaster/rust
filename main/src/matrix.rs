@@ -7,10 +7,10 @@ use ::std::time::{SystemTime};
 use ::piston_window::{*};
 
 #[derive(Debug)]
-struct State { power:bool, x:f64, y:f64, i:i32, j:i32 }
+struct State { x:f64, y:f64, i:i32, j:i32 }
 
 impl State {
-    fn new() -> State { State{ power:true, x:0.0, y:0.0, i:0, j:0 } }
+    fn new() -> State { State{ x:0.0, y:0.0, i:0, j:0 } }
     fn i(&mut self) -> i32 { self.i += 1; self.i - 1 }
     fn j(&mut self) -> i32 { self.j += 1; self.j - 1 }
 }
@@ -72,6 +72,32 @@ impl Mul<f64> for M4 {
     }
 }
 
+impl Mul<M4> for M4 {
+    type Output = M4;
+    fn mul(self, b: M4) -> M4 {
+        M4{
+         a: self.a*b.a + self.b*b.e + self.c*b.i + self.d*b.m,
+         b: self.a*b.b + self.b*b.f + self.c*b.j + self.d*b.n,
+         c: self.a*b.c + self.b*b.g + self.c*b.k + self.d*b.o,
+         d: self.a*b.d + self.b*b.h + self.c*b.l + self.d*b.p,
+         
+         e: self.e*b.a + self.f*b.e + self.g*b.i + self.h*b.m,
+         f: self.e*b.b + self.f*b.f + self.g*b.j + self.h*b.n,
+         g: self.e*b.c + self.f*b.g + self.g*b.k + self.h*b.o,
+         h: self.e*b.d + self.f*b.h + self.g*b.l + self.h*b.p,
+
+         i: self.i*b.a + self.j*b.e + self.k*b.i + self.l*b.m,
+         j: self.i*b.b + self.j*b.f + self.k*b.j + self.l*b.n,
+         k: self.i*b.c + self.j*b.g + self.k*b.k + self.l*b.o,
+         l: self.i*b.d + self.j*b.h + self.k*b.l + self.l*b.p,
+
+         m: self.m*b.a + self.n*b.e + self.o*b.i + self.p*b.m,
+         n: self.m*b.b + self.n*b.f + self.o*b.j + self.p*b.n,
+         o: self.m*b.c + self.n*b.g + self.o*b.k + self.p*b.o,
+         p: self.m*b.d + self.n*b.h + self.o*b.l + self.p*b.p}
+    }
+}
+
 type V4 = [f64; 4];
 
 // Scale x, y , z
@@ -95,42 +121,42 @@ impl MulAssign<Rot> for M4 {
             Rot::RotX(f) => {
                 let c = f.cos();
                 let s = f.sin();
-                let m1  = self.b;
-                let m5  = self.f;
-                let m9  = self.j;
-                let m13 = self.n;
-                self.b = m1*c + self.c*s;  self.c = -m1*s + self.c*c;
-                self.f = m5*c + self.g*s;  self.g = -m5*s + self.g*c;
-                self.j = m9*c + self.k*s;  self.k = -m9*s + self.k*c;
-                self.n = m13*c+ self.o*s;  self.o = -m13*s+ self.o*c;
-            } // RotX
+                let mb = self.b; // abcd 1...
+                let mf = self.f; // efgh .CZ.
+                let mj = self.j; // ijkl .SC.
+                let mn = self.n; // mnop ...1
+                self.b = mb*c - self.c*s;  self.c = mb*s + self.c*c;
+                self.f = mf*c - self.g*s;  self.g = mf*s + self.g*c;
+                self.j = mj*c - self.k*s;  self.k = mj*s + self.k*c;
+                self.n = mn*c - self.o*s;  self.o = mn*s + self.o*c;
+            },
             Rot::RotY(f) => {
                 let c = f.cos();
                 let s = f.sin();
+                let ma = self.a; // abcd   C.S.
+                let me = self.e; // efgh * .1..
+                let mi = self.i; // ijkl   Z.C.
+                let mm = self.m; // mnop   ...1
+                self.a = ma*c - self.c*s;  self.c = ma*s + self.c*c;
+                self.e = me*c - self.g*s;  self.g = me*s + self.g*c;
+                self.i = mi*c - self.k*s;  self.k = mi*s + self.k*c;
+                self.m = mm*c - self.o*s;  self.o = mm*s + self.o*c;
+            },
+            Rot::RotZ(f) => {
+                let s = f.sin();
+                let c = f.cos();
                 let ma = self.a;
                 let me = self.e;
                 let mi = self.i;
                 let mm = self.m;
-                self.a = ma*c + self.c*s;  self.c = ma*s - self.c*c;
-                self.e = me*c + self.g*s;  self.g = me*s - self.g*c;
-                self.i = mi*c + self.k*s;  self.k = mi*s - self.k*c;
-                self.m = mm*c + self.o*s;  self.o = mm*s - self.o*c;
-            } // RotY
-            Rot::RotZ(f) => {
-                let s = f.sin();
-                let c = f.cos();
-                let m0 = self.a;
-                let m4 = self.e;
-                let m8 = self.i;
-                let m12 = self.m;
-                self.a = m0*c  + self.b*s;   self.b = -m0*s  + self.b*c;
-                self.e = m4*c  + self.f*s;   self.f = -m4*s  + self.f*c;
-                self.i = m8*c  + self.j*s;   self.j = -m8*s  + self.j*c;
-                self.m = m12*c + self.n*s;   self.n = -m12*s + self.n*c;
-            } // RotZ
+                self.a = ma*c + self.b*s;  self.b = -ma*s + self.b*c;
+                self.e = me*c + self.f*s;  self.f = -me*s + self.f*c;
+                self.i = mi*c + self.j*s;  self.j = -mi*s + self.j*c;
+                self.m = mm*c + self.n*s;  self.n = -mm*s + self.n*c;
+            }
         } // match
-    } // fn
-} // impl
+    } // fn mul_assign
+} // impl MulAssign
 
 
 const M4_ID :M4 =
@@ -259,15 +285,20 @@ fn xform (m: &M4, v: &V4) -> [f64; 2] {
     let x = m.a*a  + m.b*b  + m.c*c  + m.d*d;
     let y = m.e*a  + m.f*b  + m.g*c  + m.h*d;
     let z = (m.i*a  + m.j*b  + m.k*c  + m.l*d) * 0.004;
-    let n = m.m*a  + m.n*b  + m.o*c  + m.p*d;
-    [x/z, y/z]
+    //let n = m.m*a  + m.n*b  + m.o*c  + m.p*d;
+    if z < 0.0 {
+        [::std::f64::NAN, ::std::f64::NAN]
+    } else {
+        [x/z, y/z]
+    }
 }
 
 // Ornament
 struct Orn {
     poly: Vec<V4>,
     mat: M4,
-    c: [f32; 4]
+    c: [f32; 4],
+    update: bool
 }
 
 fn fun_piston() {
@@ -281,7 +312,7 @@ fn fun_piston() {
     let mut pwin : ::glutin_window::GlutinWindow =
         window_settings
             .graphics_api(::opengl_graphics::OpenGL::V3_2)
-            //.exit_on_esc(true)
+            .exit_on_esc(true)
             .size(piston_window::Size{width :W, height :H})
             .decorated(true)
             .build()
@@ -304,7 +335,8 @@ fn fun_piston() {
                     [ 1.0,  1.0,  0.0, 1.0],
                     [-1.0,  1.0,  0.0, 1.0]],
                 mat: mat,
-                c: [crate::r32(1.0), crate::r32(1.0), crate::r32(1.0), 0.5]
+                c: [crate::r32(1.0), crate::r32(1.0), crate::r32(1.0), 0.5],
+                update: true
             } // Orn
         );
     }
@@ -317,7 +349,8 @@ fn fun_piston() {
                 [ 1.0, 0.0,  1.0, 1.0],
                 [-1.0, 0.0,  1.0, 1.0]],
             mat: (M4_ID * 0.5) + [0.0, -1.0, 0.0],
-            c: [0.0, 0.2, 0.0, 0.1]
+            c: [0.0, 0.5, 0.0, 0.1],
+            update: false
         });
 
     let epoch :SystemTime = SystemTime::now(); // For FPS calculation
@@ -330,76 +363,106 @@ fn fun_piston() {
     let mut events = ::piston::event_loop::Events::new(EventSettings::new());
 
     // Apply each object's xform to itself once
+    /*
     for poly in polys.iter_mut() {
         for vi in 0..poly.poly.len() {
             xformmut(&poly.mat, &mut poly.poly[vi]);
         }
     }
+    */
 
-    while state.power { while let Some(event) = events.next(&mut pwin) {
+    while let Some(event) = events.next(&mut pwin) {
+
+        /*
+        match &event { //::piston_window::Event
+           Event::Input(i, j)   => println!("\x1b[1;31mInput {:?} {:?}", i, j),
+           Event::Loop(Loop::Idle(::piston::input::IdleArgs{dt})) => println!("\x1b[0;32mLoop/Idle dt={:?}", dt),
+           Event::Loop(i)       => println!("\x1b[1;32mLoop {:?}", i),
+           Event::Custom(i,j,k) => println!("\x1b[1;34mCustom {:?} {:?} {:?}", i, j, k),
+        }
+        */
+
+        //println!("\x1b[31m{:?} \x1b[0m", event);
         if event.idle_args() != None {
-             //println!("{:?} {}", event, 1000.0 * state.i as f32 / epoch.elapsed().unwrap().as_millis() as f32);
-             break
+            //println!("{:?} {}", event, 1000.0 * state.i as f32 / epoch.elapsed().unwrap().as_millis() as f32);
+            //break
         }
         if event.resize_args() != None { }
-        if event.mouse_cursor_args() != None {
-           let [x,y] = event.mouse_cursor_args().unwrap();
+        if let Some([x,y]) = event.mouse_cursor_args() {
            mx = x - W/2.0;
            my = y - H/2.0;
            doit = true;
-           //println!("mx={} my={}", mx, my);
+           //print!("\x1b[33m{:.1},{:.1} \x1b[0m", x, y);
+           ::util::flush();
         }
-        if event.button_args() != None {
-            if event.button_args().unwrap().button == Button::Keyboard(Key::Escape) {
-                state.power = false;
-                break
+        if let Some(args) = event.button_args() {
+            match args.button {
+                Button::Keyboard(Key::Q) => pwin.set_should_close(true),
+                Button::Keyboard(Key::S) => { state.x += -0.01 * (mx*0.01).sin();  state.y += -0.01 * (mx*0.01).cos(); },
+                Button::Keyboard(Key::A) => { state.x +=  0.01 * (mx*0.01).sin();  state.y +=  0.01 * (mx*0.01).cos(); },
+                Button::Keyboard(Key::D) => { state.x +=  0.01 * (mx*0.01+1.57).sin(); state.y +=  0.01 * (mx*0.01+1.57).cos(); },
+                Button::Keyboard(Key::F) => { state.x +=  0.01 * (mx*0.01-1.57).sin(); state.y +=  0.01 * (mx*0.01-1.57).cos(); },
+                w => ()
             }
         }
-        if event.text_args() != None {
-            if event.text_args().unwrap() == "q" { state.power = false; break }
-            if event.text_args().unwrap() == " " { ::util::sleep(500) }
-            if event.text_args().unwrap() == "s" { state.x += -0.01 * (mx*0.01).sin(); state.y += -0.01 * (mx*0.01).cos(); break }
-            if event.text_args().unwrap() == "a" { state.x +=  0.01 * (mx*0.01).sin(); state.y +=  0.01 * (mx*0.01).cos(); break }
-            if event.text_args().unwrap() == "d" { state.x +=  0.01 * (mx*0.01+1.57).sin(); state.y +=  0.01 * (mx*0.01+1.57).cos(); break }
-            if event.text_args().unwrap() == "f" { state.x +=  0.01 * (mx*0.01-1.57).sin(); state.y +=  0.01 * (mx*0.01-1.57).cos(); break }
+        if let Some(args) = event.text_args() {
+            //println!("text_args == {:?}", args);
+            if args == " " { ::util::sleep(500) }
         }
         if doit && event.render_args() != None {
             let i = state.i();
             let args = event.render_args().unwrap();
 
-            let mut mat = M4_ID;
-            rotx(&mut mat, -my*0.01);
-            roty(&mut mat, -mx*0.01);
-            trans(&mut mat, state.x, 0.2, 1.0+state.y);
-            //mat *= Rot::RotY(i as f64 / 50.0);
+            let mut gmat = M4_ID;
+            rotx(&mut gmat, -my*0.01);
+            roty(&mut gmat, -mx*0.01);
+            trans(&mut gmat, state.x, 0.2, 1.0+state.y);
+            //gmat *= Rot::RotY(i as f64 / 50.0);
 
-            gl.draw(
-                args.viewport(),
-                |context :graphics::Context,
-                 graphics|
-                {
-                    //persPost(&mut mat);
-                    ::graphics::clear([0.0, 0.0, 0.0, 1.0], graphics);
-                    for poly in polys.iter_mut() {
-                        for pi in 0..poly.poly.len() {
-                            ::graphics::polygon(
-                                poly.c,
-                                &poly.poly.iter()
-                                    .map( |v| xform(&mat, &v) )
-                                    .collect::<Vec<[f64; 2]>>(),
-                                [[0.01, 0.0, 0.0], [0.0, 0.01, 0.0]], //context.transform,
-                                graphics)
-                        }
+            if i % 1000 == 0 {
+                print!("\x1b[0;32m{:.1}\x1b[0m ", 1000.0 * state.i as f32 / epoch.elapsed().unwrap().as_millis() as f32);
+                ::util::flush();
+            }
+
+
+            gl.draw( args.viewport(), |context :graphics::Context, graphics| {
+                //persPost(&mut gmat);
+                ::graphics::clear([0.0, 0.0, 0.0, 1.0], graphics);
+                let mut ii = 1f64;
+                for poly in polys.iter_mut() {
+                    ii += 0.01;
+                    let mut mat = poly.mat;
+                    if poly.update {
+                        //mat *= Rot::RotZ(i as f64 / 10.0); // Mutate object's transform
+                        //mat *= Rot::RotX(i as f64 / 120.0); // Mutate object's transform
+                        mat *= Rot::RotY(i as f64 / 100.0 + ii); // Mutate object's transform
+                        mat *= 2f64; //(i as f64 / 10.0 + ii).sin() * 1.0 + 1.5;
                     }
-                } // lambda
-            ); // draw_2
+                    let tmat = gmat * mat; // Combine camera and obj transofmr
+
+                    // Transform all the polygons
+                    let polys = poly.poly
+                        .iter()
+                        .map( |v| xform(&tmat, &v) )
+                        .filter( |v| ::std::f64::NAN != v[0])
+                        .collect::<Vec<[f64; 2]>>();
+
+                    if 2 < polys.len()  {
+                        ::graphics::polygon(
+                            poly.c,
+                            &polys,
+                            [[0.01, 0.0, 0.0], [0.0, 0.01, 0.0]], //context.transform,
+                            graphics)
+                    } // if
+                } // for poly
+            }); // lambda // draw_2
             //::util::sleep(100);
             //doit = false;
         } // if render_args
         else if event.update_args() != None { }
         else if event.after_render_args() != None { }
         //else { println!("{:?}", event); }
-    }}; // while while
+    } // while
 }
 
 ////////////////////////////////////////////////////////////////////////////////
