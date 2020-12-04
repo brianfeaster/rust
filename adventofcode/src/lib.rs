@@ -1,4 +1,3 @@
-#![allow(dead_code, unused_variables, non_snake_case)]
 use std::collections::HashMap;
 use regex::Regex;
 
@@ -89,7 +88,7 @@ fn validate_passwords2 (filename: &str) -> usize {
         let pw = &cap[4].as_bytes();
         first <= pw.len()-1 &&
         second <= pw.len()-1 &&
-        ((&pw[first] == ch) ^ (&pw[second] == ch))
+        (&pw[first] == ch) ^ (&pw[second] == ch)
     })
     .filter( |s| *s)
     .count()
@@ -103,12 +102,45 @@ fn day2 () {
 
 // Day 2
 ////////////////////////////////////////////////////////////////////////////////
+// Day 3
+
+fn walk ( filename: &str, skiptable: &[(usize, usize)]) -> usize {
+    ::std::fs::read_to_string(filename).unwrap().lines()
+    .fold(
+        (0,1,0,0),
+        |(idx, rowskip, col, result), row| {
+        if rowskip == 1 {
+            (idx+1,
+             skiptable[idx % skiptable.len()].1,
+             col + skiptable[idx % skiptable.len()].0,
+             result + (0 < row.len() &&
+                      '#' == row.chars().nth(col % row.len()).unwrap() ) as usize )
+        } else {
+           (idx, rowskip-1, col, result)
+        }
+    }
+    ).3
+}
+
+fn day3 () {
+    ::std::println!("== {}:{} ::{}::day3() ====", std::file!(), core::line!(), core::module_path!());
+    println!("First stage result {}", walk("data/input3.txt", &[(3,1)]));
+    println!("Second stage result {:?}",
+        [(1,1),(3,1),(5,1),(7,1),(1,2)]
+        .iter()
+        .map( |p| walk("data/input3.txt", &[*p]) )
+        .product::<usize>()
+    );
+}
+
+// Day 3
+////////////////////////////////////////////////////////////////////////////////
 // Main
 
 pub fn main() {
     ::std::println!("== {}:{} ::{}::main() ====", std::file!(), core::line!(), core::module_path!());
-    day2();
-    //day1();
+    if false {
+    day1();
     // 892 + 1128 = 2020, multiplied = 1006176
     // 1128 + 892 = 2020, multiplied = 1006176
     // 890 + 874 + 256 = 2020, multiplied = 199132160
@@ -117,6 +149,13 @@ pub fn main() {
     // 874 + 256 + 890 = 2020, multiplied = 199132160
     // 256 + 890 + 874 = 2020, multiplied = 199132160
     // 256 + 874 + 890 = 2020, multiplied = 199132160
+    day2();
+    // Valid passwords: 483
+    // Valid passwords 2nd approach: 482
+    }
+    day3();
+    // First stage result 286
+    // Second stage result 3638606400
 }
 
 // Main
