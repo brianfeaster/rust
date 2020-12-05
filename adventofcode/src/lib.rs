@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use regex::Regex;
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -169,11 +169,11 @@ fn validate_passport2 (h: &Hm4) -> bool {
         (u=="cm" && (150 <= h && h <= 193)) ||
         (u=="in" && (59  <= h && h <= 76))
     } && {
-        1 == Regex::new(r"^#[0-9a-f]{6}$").unwrap().captures_iter(h.get("hcl").unwrap_or(s)).count()
+        Regex::new(r"^#[0-9a-f]{6}$").unwrap().captures(h.get("hcl").unwrap_or(s)).is_some()
     } && {
-        1 == Regex::new(r"^(amb|blu|brn|gry|grn|hzl|oth)$").unwrap().captures_iter(h.get("ecl").unwrap_or(s)).count()
+        Regex::new(r"^(amb|blu|brn|gry|grn|hzl|oth)$").unwrap().captures(h.get("ecl").unwrap_or(s)).is_some()
     } && {
-        1 == Regex::new(r"^\d{9}$").unwrap().captures_iter(h.get("pid").unwrap_or(s)).count()
+        Regex::new(r"^\d{9}$").unwrap().captures(h.get("pid").unwrap_or(s)).is_some()
     }
 }
 
@@ -185,6 +185,30 @@ fn day4 () {
         scan_passport("data/input4.txt").iter().filter( |h| validate_passport2(*h) ).count());
 }
 // Day 4
+////////////////////////////////////////////////////////////////////////////////
+// Day 5
+
+fn readbinaries (filename: &str) -> usize {
+   *::std::fs::read_to_string(filename).unwrap() // Read file
+     // Fix binary digits
+    .chars().map( |c| match c { 'B'|'R'=>'1', 'F'|'L'=>'0', _=>c} )
+    .collect::<String>().lines()
+    // Parse binary numbers
+    .map( |s| usize::from_str_radix(&s, 2).unwrap() )
+    .fold( // Create the plane, fill with vacancies, then remove them
+        (0..128) // New rows
+        .map( |r| (r*8 .. (r+1)*8) .collect::<HashSet<usize>>()) // New seats
+        .collect::<Vec<HashSet<usize>>>(), // New plane
+        |mut t, d| { t[d/8].remove(&d); t } ) // Remove vacancy
+    .iter().filter( |v| v.len() == 1 ) // Last available row
+    .nth(0).unwrap().iter().nth(0).unwrap() // Last available seat
+}
+
+fn day5 () {
+    ::std::println!("== {}:{} ::{}::day5() ====", std::file!(), core::line!(), core::module_path!());
+    println!("Your seat number: {}", readbinaries("data/input5.txt")); // 524
+}
+// Day 5
 ////////////////////////////////////////////////////////////////////////////////
 // Main
 
@@ -206,10 +230,12 @@ pub fn main() {
     day3();
     // First stage result 286
     // Second stage result 3638606400
-    }
     day4();
     // Valid passports v1 242
     // Valid passports v2 186
+    }
+    day5();
+    // Your seat number: 524
 }
 
 // Main
