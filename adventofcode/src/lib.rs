@@ -210,6 +210,22 @@ fn day5 () {
 }
 // Day 5
 ////////////////////////////////////////////////////////////////////////////////
+// Day *
+
+fn doit (filename: &str) -> usize {
+    ::std::fs::read_to_string(filename).unwrap().lines()
+    .inspect( |e| println!("<< {}", e) )
+    .last();
+    0
+}
+
+fn day6 () {
+    ::std::println!("== {}:{} ::{}::day6() ====", std::file!(), core::line!(), core::module_path!());
+    println!("Result A: {}", doit("data/input6.txt"));
+    println!("Result B: {}", doit("data/input6.txt"));
+}
+// Day *
+////////////////////////////////////////////////////////////////////////////////
 // Main
 
 pub fn main() {
@@ -233,9 +249,10 @@ pub fn main() {
     day4();
     // Valid passports v1 242
     // Valid passports v2 186
-    }
     day5();
     // Your seat number: 524
+    }
+    day6();
 }
 
 // Main
