@@ -48,7 +48,7 @@ fn find2020x3(ht: &Hm) {
 
 fn day1 () {
     ::std::println!("== {}:{} ::{}::day1() ====", std::file!(), core::line!(), core::module_path!());
-    match ::std::fs::read_to_string("data/input.day1") {
+    match ::std::fs::read_to_string("data/input1.day") {
         Ok(filestr) => {
             let ht = numbers_to_hash(filestr);
             find2020(&ht);
@@ -95,8 +95,8 @@ fn validate_passwords2 (filename: &str) -> usize {
 
 fn day2 () {
     ::std::println!("== {}:{} ::{}::day2() ====", std::file!(), core::line!(), core::module_path!());
-    println!("Valid passwords: {}", validate_passwords("data/input.day2"));
-    println!("Valid passwords 2nd approach: {}", validate_passwords2("data/input.day2"));
+    println!("Valid passwords: {}", validate_passwords("data/input2.day"));
+    println!("Valid passwords 2nd approach: {}", validate_passwords2("data/input2.day"));
 }
 
 // Day 2
@@ -210,21 +210,64 @@ fn day5 () {
 }
 // Day 5
 ////////////////////////////////////////////////////////////////////////////////
-// Day *
+// Day 6
+fn ioerr () -> ::std::io::Error { ::std::io::Error::new(::std::io::ErrorKind::Other, "") }
 
-fn doit (filename: &str) -> usize {
-    ::std::fs::read_to_string(filename).unwrap().lines()
-    .inspect( |e| println!("<< {}", e) )
-    .last();
-    0
+fn doit6 (filename: &str, part1 :bool) -> ::std::io::Result<usize> {
+    ::std::fs::read_to_string(filename)?.lines()
+    .fold(
+        vec![HashMap::new()], // Initial vector contains empty hash table
+        |mut v, line| {
+            if 0 == line.len() {
+                v.insert(0, HashMap::new()); // Start a new hash table
+            } else {
+                line.chars() // [char, ...]
+                .for_each( |ch| {
+                    let count = match v[0].get(&ch) { Some(count)=>count+1, None=>1 }; // Increment count
+                    v[0].insert(ch, count); // Record count
+                });
+                // increment person count
+                let count = match v[0].get(&'#') { Some(count)=>count+1, None=>1 }; // Increment count
+                v[0].insert('#', count);
+            }
+            v // Return the vector (is this copied each itme?) for next fold iteration
+        }
+    ) // fold
+    .iter()
+    //.inspect( |h| println!("{:?}", h) )
+    .fold( 0, |c :usize, h| {
+        if part1 { // Part 1 
+            c + h.len() - 1 // Subtract the passenger count entry I'm keeping in the hash table
+        } else { // Part 2
+            let peoplecount = h.get(&'#').unwrap();
+            c + h.iter().map( |(k, v)| if *k != '#' && *v == *peoplecount { 1 } else { 0 } ).sum::<usize>()
+        }
+    })
+    .checked_add(0usize).ok_or(ioerr())
 }
 
 fn day6 () {
     ::std::println!("== {}:{} ::{}::day6() ====", std::file!(), core::line!(), core::module_path!());
-    println!("Result A: {}", doit("data/input6.txt"));
-    println!("Result B: {}", doit("data/input6.txt"));
+    println!("Result A: {:?}\n", doit6("data/input6.txt", true));
+    println!("Result B: {:?}", doit6("data/input6.txt", false));
 }
-// Day *
+// Day 6
+////////////////////////////////////////////////////////////////////////////////
+// Day j
+
+fn doitj (filename: &str) -> ::std::io::Result<usize> {
+    ::std::fs::read_to_string(filename)?
+    .lines()
+    .inspect( |e| println!("<< {}", e) )
+    .count().checked_add(0).ok_or(ioerr())
+}
+
+fn dayj () {
+    ::std::println!("== {}:{} ::{}::dayj() ====", std::file!(), core::line!(), core::module_path!());
+    println!("Result A: {:?}\n", doitj("data/inputj.txt"));
+    println!("Result B: {:?}", doitj("data/inputj.txt"));
+}
+// Day j
 ////////////////////////////////////////////////////////////////////////////////
 // Main
 
@@ -251,8 +294,11 @@ pub fn main() {
     // Valid passports v2 186
     day5();
     // Your seat number: 524
-    }
     day6();
+    // Result A: Ok(6612)
+    // Result B: Ok(3268)
+    }
+    dayj();
 }
 
 // Main
