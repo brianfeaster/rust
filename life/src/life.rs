@@ -20,8 +20,6 @@ struct State {
     delta: usize,
     tick: usize,
     key: String,
-    width: usize,
-    height: usize,
     threads: usize
 }
 
@@ -59,8 +57,6 @@ impl State {
             randomize :true,
             key  :"".to_string(),
             delta: 0,
-            width: 0,
-            height: 0,
             threads: 8
         }
     }
@@ -69,7 +65,6 @@ impl State {
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Game of life
-///
 
 /// Update/mutate the next gen of life in row 'bb' given the current
 /// row 'rb', the row above 'ra', and row below 'rc'.
@@ -153,40 +148,39 @@ fn genNewRows (
     }));
 }
 
-type Arena = Arc<Vec<Mutex<Vec<i32>>>>;
+////////////////////////////////////////////////////////////////////////////////
 
+/// Copy arena to double buffer
 fn arena_render (
     aa :&Arena,
     tt :&mut crate::dbuff::Dbuff
 ) {
     for y in (0..aa.len()).rev() {
-        let row = aa[y].lock().unwrap();
-        tt.put(&row);
+        tt.put(&aa[y].lock().unwrap());
     }
 }
 
-fn arena_randomize (bb :&Arena, height :usize, width :usize) {
-    for y in 0..height {
+fn arena_randomize (bb :&Arena, w :usize, h :usize) {
+    for y in 0..h {
         let mut row = bb[y].lock().unwrap();
-        for x in 0..width {
-            row[x] = if 0 == crate::ri32(10) { 1 } else { 0 };
+        for x in 0..w {
+            row[x] = crate::ri32bi(10);
        }
     }
 }
 
-const ARENA_WIDTH :usize = 200; // 1430;
-const ARENA_HEIGHT :usize = 100; // 423;
 
-fn arena_new () -> Arena  {
-    let mut arena = Arc::new(vec![]);
-    let rows = Arc::get_mut(&mut arena).unwrap();
-    for y in 0..ARENA_HEIGHT {
-        rows.push(
-            Mutex::new(
-                (0 .. ARENA_WIDTH).map(|_| if 0 == crate::ri32(10) { 1 } else { 0 })
-                    .collect::<Vec<i32>>()));
-    }
-    return arena;
+// Arena ///////////////////////////////////////////////////////////////////////
+
+type Arena = Arc<Vec<Mutex<Vec<i32>>>>;
+
+fn arena_new (w: usize, h: usize) -> Arena  {
+    Arc::new(
+        (0..h).map(
+            |_| Mutex::new(
+                (0..w).map(|_| crate::ri32bi(10) )
+                .collect::<Vec<_>>()))
+        .collect::<Vec<Mutex<Vec<_>>>>())
 }
 
 fn draw_glider (aa :& Arena, x :usize, y :usize) {
@@ -197,17 +191,166 @@ fn draw_glider (aa :& Arena, x :usize, y :usize) {
         aa[11].lock().unwrap()[8] = 1;
 }
 
+// Life ////////////////////////////////////////////////////////////////////////
+
+struct Life {
+    whs:    (usize, usize, usize),
+    arenas: (Arena, Arena), // Nested mutable ADTs that can be passed to threads
+    dbuffs: (crate::dbuff::Dbuff, crate::dbuff::Dbuff),// Piston is 2xbuffered so we need a dbuff for each
+    state: bool,
+    threads: usize,
+}
+
+impl Life {
+    pub fn new (w: usize, h: usize) -> Life {
+        Life {
+            whs: (w, h, w*h),
+            arenas: (
+                arena_new(w, h),
+                arena_new(w, h) ),
+            dbuffs: (
+                crate::dbuff::Dbuff::new(w*h),
+                crate::dbuff::Dbuff::new(w*h) ),
+            state: false,
+            threads: 1
+        }
+    }
+    pub fn randomize (&self) -> &Self {
+        match self.state {
+            false => arena_randomize(&self.arenas.1, self.whs.0, self.whs.1),
+            true  => arena_randomize(&self.arenas.0, self.whs.0, self.whs.1)
+        }
+        self
+    }
+    pub fn add_glider (&self, x: usize, y: usize) -> &Self {
+        match self.state {
+            false => draw_glider(&self.arenas.0, x, y),
+            true  => draw_glider(&self.arenas.1, x, y)
+        }
+        self
+    }
+    pub fn genNext (&self) -> &Self {
+        let (aa, bb) = // aa is the current arena (to read/dump), bb the next arena (to generate/overwrite)
+            match self.state {
+                false => (&self.arenas.0, &self.arenas.1),
+                true  => (&self.arenas.1, &self.arenas.0)
+            };
+        let w = self.whs.0;
+        let h = self.whs.1;
+        let mut threads :Vec<JoinHandle<()>> = vec!();
+        let spins = Arc::new(Mutex::new(0)); // Keep track of mutex spins
+
+        match self.threads {
+        1 => {
+            genNewRows(aa, bb, 0..h, h, w, &mut threads, &spins); // 240
+        },
+
+        2 => {
+            genNewRows(aa, bb, 0   .. h/2, h, w, &mut threads, &spins); // 470
+            genNewRows(aa, bb, h/2 .. h,   h, w, &mut threads, &spins);
+        },
+
+        3 => {
+            genNewRows(aa, bb, 0     .. h/3,   h, w, &mut threads, &spins); // 620
+            genNewRows(aa, bb, h/3   .. h*2/3, h, w, &mut threads, &spins);
+            genNewRows(aa, bb, h*2/3 .. h,     h, w, &mut threads, &spins);
+        },
+
+        4 => {
+            genNewRows(aa, bb, h*0/4 .. h*1/4, h, w, &mut threads, &spins); // 710
+            genNewRows(aa, bb, h*1/4 .. h*2/4, h, w, &mut threads, &spins);
+            genNewRows(aa, bb, h*2/4 .. h*3/4, h, w, &mut threads, &spins);
+            genNewRows(aa, bb, h*3/4 .. h*4/4, h, w, &mut threads, &spins);
+        },
+
+        5 => {
+            genNewRows(aa, bb, h*0/5 .. h*1/5, h, w, &mut threads, &spins); // 720
+            genNewRows(aa, bb, h*1/5 .. h*2/5, h, w, &mut threads, &spins);
+            genNewRows(aa, bb, h*2/5 .. h*3/5, h, w, &mut threads, &spins);
+            genNewRows(aa, bb, h*3/5 .. h*4/5, h, w, &mut threads, &spins);
+            genNewRows(aa, bb, h*4/5 .. h*5/5, h, w, &mut threads, &spins);
+        },
+
+        6 => {
+            genNewRows(aa, bb, h*0/6 .. h*1/6, h, w, &mut threads, &spins); // 800
+            genNewRows(aa, bb, h*1/6 .. h*2/6, h, w, &mut threads, &spins);
+            genNewRows(aa, bb, h*2/6 .. h*3/6, h, w, &mut threads, &spins);
+            genNewRows(aa, bb, h*3/6 .. h*4/6, h, w, &mut threads, &spins);
+            genNewRows(aa, bb, h*4/6 .. h*5/6, h, w, &mut threads, &spins);
+            genNewRows(aa, bb, h*5/6 .. h*6/6, h, w, &mut threads, &spins);
+        },
+
+        7 => {
+            genNewRows(aa, bb, h*0/7 .. h*1/7, h, w, &mut threads, &spins); // 820
+            genNewRows(aa, bb, h*1/7 .. h*2/7, h, w, &mut threads, &spins);
+            genNewRows(aa, bb, h*2/7 .. h*3/7, h, w, &mut threads, &spins);
+            genNewRows(aa, bb, h*3/7 .. h*4/7, h, w, &mut threads, &spins);
+            genNewRows(aa, bb, h*4/7 .. h*5/7, h, w, &mut threads, &spins);
+            genNewRows(aa, bb, h*5/7 .. h*6/7, h, w, &mut threads, &spins);
+            genNewRows(aa, bb, h*6/7 .. h*7/7, h, w, &mut threads, &spins);
+        },
+
+        8 => {
+            genNewRows(aa, bb, h*0/8 .. h*1/8, h, w, &mut threads, &spins); // 830
+            genNewRows(aa, bb, h*1/8 .. h*2/8, h, w, &mut threads, &spins);
+            genNewRows(aa, bb, h*2/8 .. h*3/8, h, w, &mut threads, &spins);
+            genNewRows(aa, bb, h*3/8 .. h*4/8, h, w, &mut threads, &spins);
+            genNewRows(aa, bb, h*4/8 .. h*5/8, h, w, &mut threads, &spins);
+            genNewRows(aa, bb, h*5/8 .. h*6/8, h, w, &mut threads, &spins);
+            genNewRows(aa, bb, h*6/8 .. h*7/8, h, w, &mut threads, &spins);
+            genNewRows(aa, bb, h*7/8 .. h*8/8, h, w, &mut threads, &spins);
+        },
+
+        9 => {
+            genNewRows(aa, bb, h*0/9 .. h*1/9, h, w, &mut threads, &spins); // 700
+            genNewRows(aa, bb, h*1/9 .. h*2/9, h, w, &mut threads, &spins);
+            genNewRows(aa, bb, h*2/9 .. h*3/9, h, w, &mut threads, &spins);
+            genNewRows(aa, bb, h*3/9 .. h*4/9, h, w, &mut threads, &spins);
+            genNewRows(aa, bb, h*4/9 .. h*5/9, h, w, &mut threads, &spins);
+            genNewRows(aa, bb, h*5/9 .. h*6/9, h, w, &mut threads, &spins);
+            genNewRows(aa, bb, h*6/9 .. h*7/9, h, w, &mut threads, &spins);
+            genNewRows(aa, bb, h*7/9 .. h*8/9, h, w, &mut threads, &spins);
+            genNewRows(aa, bb, h*8/9 .. h*9/9, h, w, &mut threads, &spins);
+        },
+        _ => ()
+        } // match
+        for _ in 0..threads.len() { threads.pop().unwrap().join().unwrap(); }
+        self
+    }
+    pub fn render (&self) -> &Self {
+        /*
+        let (aa, bb) = // aa is the current arena (to read/dump), bb the next arena (to generate/overwrite)
+            match self.state {
+                false => (&self.arenas.0, &self.arenas.1),
+                true  => (&self.arenas.1, &self.arenas.0)
+            };
+        let tt =
+            match self.state {
+                false => &mut self.dbuffs.0,
+                true  => &mut self.dbuffs.1
+            };
+        arena_render(&aa, tt); // Copy to delta frame buffer
+        let delta :usize = 0;
+        pwin.draw_2d(
+            &event,
+            |context:  piston_window::Context,
+                graphics: &mut piston_window::G2d,
+                _device:  &mut piston_window::GfxDevice
+            | { dumpPiston(&tt, &mut state.delta, w, h, context, graphics); }
+        );
+        tt.tick();
+        */
+        self
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 fn life () {
-    // Coneable objects that can be passed to threads
-    let arena :Arena = arena_new();
-    let arenb :Arena = arena_new();
-    let arenaSize = ARENA_WIDTH * ARENA_HEIGHT;
-    //let tbuff = ::term::Tbuff::new(); // Asynchronous keyboard reads
-    let mut dbuffa = crate::dbuff::Dbuff::new(arenaSize);
-    let mut dbuffb = crate::dbuff::Dbuff::new(arenaSize);
+    let life :Life = Life::new(200, 110);
     let mut state :State = State::new();
     let epoch :SystemTime = SystemTime::now(); // For FPS calculation
-    let mut threads :Vec<JoinHandle<()>> = vec!();
+
     let mut pwin :PistonWindow =
         WindowSettings::new("ASCIIRhOIDS", [256 as u32, 256 as u32])
             //.exit_on_esc(true)
@@ -215,107 +358,21 @@ fn life () {
             .decorated(true)
             .build()
             .unwrap();
-    let spins = Arc::new(Mutex::new(0));
 
-    state.width = ARENA_WIDTH;
-    state.height = ARENA_HEIGHT;
 
     while state.powered() && state.tick < 50000 { // Loop until keypress 'q'
 
         //::util::sleep(200);
         
-        let (aa, bb) = // aa is the current arena (to read/dump), bb the next arena (to generate/overwrite)
-            match 0 == state.tick & 1 {
-                true  => (&arena, &arenb),
-                false => (&arenb, &arena)
-            };
-
-        let h = state.height;
-        let w = state.width;
-
         // Draw a glider periodically
-        if 0 == state.tick % 14 { draw_glider(aa, 5, 5); }
+        if 0 == state.tick % 14 { life.add_glider(5, 5);  }
 
-        for _ in 0..threads.len() { threads.pop().unwrap().join().unwrap(); }
 
         // Either randomize the visible field or compute next generation
         if state.randomize() {
-            arena_randomize(bb, h, w);
+            life.randomize();
         } else {
-            match state.threads {
-            1 => {
-               genNewRows(aa, bb, 0..h, h, w, &mut threads, &spins); // 240
-            },
-
-            2 => {
-               genNewRows(aa, bb, 0   .. h/2, h, w, &mut threads, &spins); // 470
-               genNewRows(aa, bb, h/2 .. h,   h, w, &mut threads, &spins);
-            },
-
-            3 => {
-                genNewRows(aa, bb, 0     .. h/3,   h, w, &mut threads, &spins); // 620
-                genNewRows(aa, bb, h/3   .. h*2/3, h, w, &mut threads, &spins);
-                genNewRows(aa, bb, h*2/3 .. h,     h, w, &mut threads, &spins);
-            },
-
-            4 => {
-                genNewRows(aa, bb, h*0/4 .. h*1/4, h, w, &mut threads, &spins); // 710
-                genNewRows(aa, bb, h*1/4 .. h*2/4, h, w, &mut threads, &spins);
-                genNewRows(aa, bb, h*2/4 .. h*3/4, h, w, &mut threads, &spins);
-                genNewRows(aa, bb, h*3/4 .. h*4/4, h, w, &mut threads, &spins);
-            },
-
-            5 => {
-                genNewRows(aa, bb, h*0/5 .. h*1/5, h, w, &mut threads, &spins); // 720
-                genNewRows(aa, bb, h*1/5 .. h*2/5, h, w, &mut threads, &spins);
-                genNewRows(aa, bb, h*2/5 .. h*3/5, h, w, &mut threads, &spins);
-                genNewRows(aa, bb, h*3/5 .. h*4/5, h, w, &mut threads, &spins);
-                genNewRows(aa, bb, h*4/5 .. h*5/5, h, w, &mut threads, &spins);
-            },
-
-            6 => {
-                genNewRows(aa, bb, h*0/6 .. h*1/6, h, w, &mut threads, &spins); // 800
-                genNewRows(aa, bb, h*1/6 .. h*2/6, h, w, &mut threads, &spins);
-                genNewRows(aa, bb, h*2/6 .. h*3/6, h, w, &mut threads, &spins);
-                genNewRows(aa, bb, h*3/6 .. h*4/6, h, w, &mut threads, &spins);
-                genNewRows(aa, bb, h*4/6 .. h*5/6, h, w, &mut threads, &spins);
-                genNewRows(aa, bb, h*5/6 .. h*6/6, h, w, &mut threads, &spins);
-            },
-
-            7 => {
-                genNewRows(aa, bb, h*0/7 .. h*1/7, h, w, &mut threads, &spins); // 820
-                genNewRows(aa, bb, h*1/7 .. h*2/7, h, w, &mut threads, &spins);
-                genNewRows(aa, bb, h*2/7 .. h*3/7, h, w, &mut threads, &spins);
-                genNewRows(aa, bb, h*3/7 .. h*4/7, h, w, &mut threads, &spins);
-                genNewRows(aa, bb, h*4/7 .. h*5/7, h, w, &mut threads, &spins);
-                genNewRows(aa, bb, h*5/7 .. h*6/7, h, w, &mut threads, &spins);
-                genNewRows(aa, bb, h*6/7 .. h*7/7, h, w, &mut threads, &spins);
-            },
-
-            8 => {
-                genNewRows(aa, bb, h*0/8 .. h*1/8, h, w, &mut threads, &spins); // 830
-                genNewRows(aa, bb, h*1/8 .. h*2/8, h, w, &mut threads, &spins);
-                genNewRows(aa, bb, h*2/8 .. h*3/8, h, w, &mut threads, &spins);
-                genNewRows(aa, bb, h*3/8 .. h*4/8, h, w, &mut threads, &spins);
-                genNewRows(aa, bb, h*4/8 .. h*5/8, h, w, &mut threads, &spins);
-                genNewRows(aa, bb, h*5/8 .. h*6/8, h, w, &mut threads, &spins);
-                genNewRows(aa, bb, h*6/8 .. h*7/8, h, w, &mut threads, &spins);
-                genNewRows(aa, bb, h*7/8 .. h*8/8, h, w, &mut threads, &spins);
-            },
-
-            9 => {
-                genNewRows(aa, bb, h*0/9 .. h*1/9, h, w, &mut threads, &spins); // 700
-                genNewRows(aa, bb, h*1/9 .. h*2/9, h, w, &mut threads, &spins);
-                genNewRows(aa, bb, h*2/9 .. h*3/9, h, w, &mut threads, &spins);
-                genNewRows(aa, bb, h*3/9 .. h*4/9, h, w, &mut threads, &spins);
-                genNewRows(aa, bb, h*4/9 .. h*5/9, h, w, &mut threads, &spins);
-                genNewRows(aa, bb, h*5/9 .. h*6/9, h, w, &mut threads, &spins);
-                genNewRows(aa, bb, h*6/9 .. h*7/9, h, w, &mut threads, &spins);
-                genNewRows(aa, bb, h*7/9 .. h*8/9, h, w, &mut threads, &spins);
-                genNewRows(aa, bb, h*8/9 .. h*9/9, h, w, &mut threads, &spins);
-            },
-            _ => ()
-            } // match
+            life.genNext();
         }
 
         //for _ in 0..threads.len() { threads.pop().unwrap().join().unwrap(); }
@@ -332,14 +389,9 @@ fn life () {
         */
 
         // Draw the arena.
-        let render = 0 == state.tick % 1;
+        let renderp = 0 == state.tick % 1;
 
-        if render {
-            let tt =
-                match (dbuffa.tick + dbuffb.tick) & 1 {
-                    0 => &mut dbuffa,
-                    _ => &mut dbuffb
-                };
+        if renderp {
             while let Some(event) = pwin.next() {
                 //::log::info!("{:?}", event);
                 if event.idle_args() != None { break; }
@@ -353,17 +405,7 @@ fn life () {
                     if event.text_args().unwrap() == "q" { state.power = false; }
                     if event.text_args().unwrap() == " " { state.randomize = true; }
                 } else if event.render_args() != None {
-                    arena_render(&aa, tt); // Copy to delta frame buffer
-                    state.delta = 0;
-                    pwin.draw_2d(
-                        &event,
-                        |context: piston_window::Context,
-                            graphics,
-                            _device| {
-                            dumpPiston(&tt, &mut state.delta, w, h, context, graphics);
-                        }
-                    );
-                    tt.tick();
+                    life.render();
                     break;
                 }
             } // while event
@@ -376,7 +418,8 @@ fn life () {
                 1000.0 * state.tick as f32 / epoch.elapsed().unwrap().as_millis() as f32,
                 state.tick,
                 state.delta,
-                spins.lock().unwrap());
+                0 //spins.lock().unwrap()
+                );
             ::util::flush();
         }
 

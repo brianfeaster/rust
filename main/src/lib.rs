@@ -302,10 +302,10 @@ pub fn main () {
     ::std::println!("== {}:{} ::{}::main() ====", std::file!(), core::line!(), core::module_path!());
     //println!("{:?}", mainJson());
     //println!("!!! {:?}", mainJsonSerdes());
-    //::life::main();
     //crate::mainAsteroid(); // ??? Is there a symbol to explicitly reference the root module or is "crate" and other modules the only symbols?  A: There are only crates and they canonically start with :: and create is the crate representing the current crate.
     //println!("map {:?}", ('🐘' .. '🐷').map(|x| (|x| x)(x)).collect::<Vec<char>>()); // type std::ops::RangeInclusive
     //crate::lag::main();
-    crate::fun::main();
+    //crate::fun::main();
     //::term::main();
+    ::life::main();
 }

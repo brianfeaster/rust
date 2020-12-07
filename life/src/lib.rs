@@ -2,8 +2,8 @@
 mod life;
 mod dbuff;
 
-/// Create random i32
-pub fn ri32(m: i32) -> i32 { (::rand::random::<f32>() * m as f32) as i32 }
+/// Create random boolean
+pub fn ri32bi(m: i32) -> i32 { ((::rand::random::<f32>() * m as f32) as i32 == 0) as i32 }
 
 pub fn main () {
     //::pretty_env_logger::init();

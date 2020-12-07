@@ -1,30 +1,36 @@
-#![allow(dead_code, unused_variables, non_snake_case)]
 use ::std::fmt;
 use ::std::ops::{Add, Mul, AddAssign, MulAssign};
 use ::std::time::{SystemTime};
 use ::piston_window::*;
 
+const CF2 :&str = "\x1b[32m";
 
 #[derive(Debug)]
 struct State {
-    W:usize, H:usize,
+    W:f64, H:f64,
     x:f64, y:f64, z:f64,
-    mx:f64, my:f64,
-    i:i32,
-    epoch:SystemTime
+    mx: f64, my: f64,
+    tick: u64,
+    epoch: SystemTime
 }
 
 impl State {
     fn new() -> State {
         State{
-            W:1200, H:600,
-            x:0.0, y:0.0, z:0.0,
-            mx:0.0, my:0.0,
-            i:0, // frame counter
+            W:1200.0, H:600.0, // window
+            x:0.0, y:0.0, z:0.0, // player
+            mx:0.0, my:0.0, // mouse
+            tick:0,
             epoch:SystemTime::now(),
-         } }
-    // Self incrementing counters
-    fn i(&mut self) -> i32 { self.i += 1; self.i - 1 }
+         }
+    } // new()
+    fn tick(&mut self) -> &mut Self { self.tick += 1; self }
+    fn printfps(&self, doit: bool) {
+        if doit && 0 == self.tick % 50 {
+            print!("{}{} ", CF2, self.tick / self.epoch.elapsed().unwrap().as_secs());
+            ::util::flush();
+        }
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -101,9 +107,6 @@ impl Mul<V4> for M4 {
     }
 }
 
-////////////////////////////////////////////////////////////////////////////////
-
-
 
 ////////////////////////////////////////////////////////////////////////////////
 // Scale matrix   M4 * M4' -> M4''
@@ -112,7 +115,6 @@ impl Mul<V4> for M4 {
 // efgh *.Y.. = eX fY gZ h
 // ijkl  ..Z.   iX jY kZ l
 // mnop  ...1   mX nY oZ p
-
 
 impl Mul<f64> for M4 {
     type Output = M4;
@@ -161,12 +163,12 @@ fn scalePost(m: &mut M4, s:[f64; 3]) {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-
-
 enum Rot {
+    // Pre rotation
     RotX(f64),
     RotY(f64),
     RotZ(f64)
+    // Post rotation???
 }
 
 //Rot Z
@@ -400,9 +402,8 @@ fn xformperspectivecull (
     }
 }
 
-////////////////////////////////////////////////////////////////////////////////
+// Ornaments ///////////////////////////////////////////////////////////////////
 
-// Ornament
 #[derive (Debug)]
 struct Orn {
     poly: Vec<V4>,
@@ -412,7 +413,7 @@ struct Orn {
 }
 
 fn make_polys() -> Vec<Orn> {
-    let mut polys :Vec<Orn> = vec!();
+    let mut polys: Vec<Orn> = vec!();
 
     let mut y = 0.0; // height of square to play square along the cone
 
@@ -451,6 +452,8 @@ fn make_polys() -> Vec<Orn> {
     polys
 }
 
+// Render //////////////////////////////////////////////////////////////////////
+
 fn render_polygons (
     state: &mut State,
     args: &RenderArgs,
@@ -459,17 +462,17 @@ fn render_polygons (
     polys: &mut Vec<Orn>,
     offset: f64
 ) {
-    let i= state.i as f64; // Parameters for animation
-    let mut ii = 0.0f64;
+    let i = state.tick as f64; // Global parameters for animation
+    let mut ii = 0.0f64; // Local counter for animation
 
     // New global transform matrix, order matters.
-    let mut gmat = M4_ID * [200.0, 200.0, 1.0]; // Must scale for perspective
+    let mut gmat = M4_ID; // * [1.0, 1.0, 1.0]; // Must scale for perspective
     gmat *= Rot::RotX(state.my); // Must roate camera direction
     gmat *= Rot::RotY(-state.mx);
     gmat += [state.x, state.z, state.y]; // Must move camera location
 
-    gmat += [offset, 0.0, 0.0]; // Translate everything in scene
-    //gmat *= Rot::RotY(i / 50.0); // Spin everything in scene around it's y-axis origin
+    gmat += [0.0, 0.0, offset]; // Translate everything in scene
+    gmat *= Rot::RotY(i / 50.0); // Spin everything in scene around it's y-axis origin
 
     ::graphics::clear([0.0, 0.0, 0.0, 1.0], gfx); // Clear framebuffer
 
@@ -494,14 +497,18 @@ fn render_polygons (
         ::graphics::polygon(
             poly.c,
             &polys,
-            [[0.01, 0.0, 0.0], [0.0, 0.01, 0.0]], // Fixed 2d transform...
+            [[1.0, 0.0, 0.0], // Fixed 2d transform...
+             [0.0, 1.0, 0.0]],
             //context.transform, // ...figure out how this works
             gfx);
 
     } // for poly
 } // fn render
 
-fn fun_piston() {
+// REPL ////////////////////////////////////////////////////////////////////////
+
+fn fun_piston() -> Result<usize, Box<dyn ::std::error::Error>>{
+    let ver = ::opengl_graphics::OpenGL::V3_2;
     let mut state: State = State::new();
 
     let pwsettings =
@@ -509,37 +516,38 @@ fn fun_piston() {
 
     let mut pwin: ::glutin_window::GlutinWindow =
         pwsettings
-            .graphics_api(::opengl_graphics::OpenGL::V4_5)
+            .graphics_api(ver)
             .exit_on_esc(true)
-            //.size(piston_window::Size{width :W, height :H})
+            .size(piston_window::Size{width: state.W, height: state.H})
             .decorated(true)
-            .build()
-            .unwrap();
+            .build()?;
 
-    let mut polys =
-        make_polys();
-
-    let mut events: ::piston_window::Events =
-        Events::new( ::piston_window::EventSettings::new().max_fps(10) );
-
-    let mut glgfx: ::opengl_graphics::GlGraphics =
-        ::opengl_graphics::GlGraphics::new(::opengl_graphics::OpenGL::V4_5);
-    // TODO: add/create shader (1) single point light source
+    let mut polys = make_polys();
+    let mut events = Events::new( ::piston_window::EventSettings::new().max_fps(10) );
+    let mut glgfx = ::opengl_graphics::GlGraphics::new(ver);
 
     while let Some(event) = events.next(&mut pwin) { match event {
+        Event::Loop(Loop::Render(args)) => {
+            println!("\x1b[0;32m Event::Loop::Render {:?}", args);
+            glgfx.draw(
+                args.viewport(),
+                | context: graphics::Context,
+                  gfx: &mut ::opengl_graphics::GlGraphics
+                | { render_polygons(&mut state, &args, &context, gfx, &mut polys, 1.0); }
+            );
+            state.tick().printfps(true); // Increment frame count
+        },
         Event::Input(Input::Resize(ResizeArgs{window_size, draw_size}), _) => {
-            //println!("\x1b[1;31mEvent::Input::Resize {:?} {:?}", window_size, draw_size)
+            //println!("\x1b[1;31mEvent::Input::Resize::ResizeArgs {:?} {:?}", window_size, draw_size)
+            state.W = window_size[0];
+            state.H = window_size[1];
         },
         Event::Input(Input::Move(Motion::MouseCursor([x, y])), _) => {
-            state.mx = x * 0.01;
-            state.my = y * 0.01;
-            //println!("\x1b[1;31mEvent::Input::Move::Motion {:?} {:?} {:?}", x,y,_);
+            //println!("\x1b[1;31mEvent::Input::Move::Motion::MouseCursor {:?} {:?} ", x as usize, y as usize);
+            state.mx = (x - state.W/2.0) * 0.01;
+            state.my = (y - state.H/2.0) * 0.01;
         },
-        Event::Input(Input::Text(args), _) => {
-            //println!("Event::Input::Text == {:?}", args);
-            if args == " " {  }
-        },
-        Event::Input(Input::Button(ButtonArgs{state:s, button:Button::Keyboard(k), scancode:c}), _) => {
+        Event::Input(Input::Button(ButtonArgs{state:s, button:Button::Keyboard(k), scancode:_}), _) => {
             //println!("Event::Input::Button == {:?} {:?} {:?}", s, b, c);
             match k {
                 Key::Q => pwin.set_should_close(true),
@@ -551,49 +559,25 @@ fn fun_piston() {
                 Key::C => { state.z +=  0.01 },
                 Key::Space => { ::util::sleep(500) },
                 _ => ()
-            } // match
-            // !pwin.should_close()
+            }
         },
-        Event::Loop(Loop::Idle(IdleArgs{dt})) => {
-            //println!("\x1b[0;32mLoop/Idle dt={:?}", dt)
-        },
-        Event::Loop(Loop::Render(args)) => {
-            //println!("\x1b[0;32m Event::Loop::Render ={:?}", args);
-            glgfx.draw(
-                args.viewport(),
-                |context: graphics::Context,
-                 gfx: &mut ::opengl_graphics::GlGraphics | {
-                    render_polygons(&mut state, &args, &context, gfx, &mut polys, -1.0);
-                    render_polygons(&mut state, &args, &context, gfx, &mut polys,  1.0);
-                }
-            );
-            state.i(); // Increment frame count
-        },
-        // Defaults
-        Event::Input(i, j) => {
-            // println!("\x1b[1;31mEvent::Input {:?} {:?}", i, j)
-        },
-        Event::Loop(i) => {
-            //println!("\x1b[1;32mLoop {:?}", i)
-        },
-        Event::Custom(i,j,k) => {
-            //println!("\x1b[1;34mCustom {:?} {:?} {:?}", i, j, k)
-        }
-    }} { // while / match
-        if state.i % 10 == 0 {
-            print!("\x1b[0;32m{:.1}\x1b[0m ", 1000.0 * state.i as f32 / state.epoch.elapsed().unwrap().as_millis() as f32);
-            ::util::flush();
-        }
-    } // while
+        Event::Input(i, j)   => { /* println!("\x1b[1;31mEvent::Input {:?} {:?}", i, j) */ },
+        Event::Loop(Loop::Idle(IdleArgs{dt})) => { /* println!("\x1b[0;32mLoop/Idle dt={:?}", dt) */ },
+        Event::Loop(i)       => { /* println!("\x1b[1;32mLoop {:?}", i) */ },
+        Event::Custom(i,j,k) => { /* println!("\x1b[1;34mCustom {:?} {:?} {:?}", i, j, k) */ }
+    }}  // match while
+    Ok(0)
 }
 
-////////////////////////////////////////////////////////////////////////////////
+// Main ////////////////////////////////////////////////////////////////////////
+
 pub fn main() {
     ::std::println!("== {}:{} ::{}::main() ====", std::file!(), core::line!(), core::module_path!());
-    fun_piston();
+    fun_piston().unwrap();
 }
 
-/* NOTES
+/* Notes ///////////////////////////////////////////////////////////////////////
+
  rotZ   mat
 23..   abcd    2a+3e 2b+3f 2c+3g 2d+3h
 42.. * efgh =  4a+2e 4b+2f 4c+2g 4d+2h
@@ -688,4 +672,4 @@ xlate  mat
 .1.y  efgh  e+ym f+yn g+yo h+yp
 ..1z  ijkl  i+zm j+zn k+zo l+zp
 ...1  mnop  m    n    o    p
-*/
+*///////////////////////////////////////////////////////////////////////////////

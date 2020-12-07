@@ -109,7 +109,7 @@ fn walks (filename: &str, dirs: &[(usize, usize)]) -> usize {
         ::std::fs::read_to_string(filename).unwrap().lines()
         .step_by(*dy)
         .enumerate()
-        .filter(|(i, line)| Some('#') == line.chars().nth(i * *dx % line.len()))
+        .filter(|(i, line)| '#' == line.chars().cycle().nth(i * *dx).unwrap())
         .count())
     .product::<usize>()
 }
@@ -117,7 +117,7 @@ fn day3 () {
     ::std::println!("== {}:{} ::{}::day3() ====", std::file!(), core::line!(), core::module_path!());
     vec![ vec![(3, 1)], vec![(1,1),(3,1),(5,1),(7,1),(1,2)] ]
     .iter()
-    .for_each( |dirs| println!("Result = {} for {:?}", walks("data/input3.txt", dirs), dirs) );
+    .for_each( |dirs| println!("Result = {:?} for {:?}", walks("data/input3.txt", dirs), dirs) );
 }
 
 // Day 3
@@ -211,49 +211,104 @@ fn day5 () {
 // Day 5
 ////////////////////////////////////////////////////////////////////////////////
 // Day 6
-fn ioerr () -> ::std::io::Error { ::std::io::Error::new(::std::io::ErrorKind::Other, "") }
 
-fn doit6 (filename: &str, part1 :bool) -> ::std::io::Result<usize> {
-    ::std::fs::read_to_string(filename)?.lines()
-    .fold(
-        vec![HashMap::new()], // Initial vector contains empty hash table
-        |mut v, line| {
-            if 0 == line.len() {
-                v.insert(0, HashMap::new()); // Start a new hash table
-            } else {
-                line.chars() // [char, ...]
-                .for_each( |ch| {
-                    let count = match v[0].get(&ch) { Some(count)=>count+1, None=>1 }; // Increment count
-                    v[0].insert(ch, count); // Record count
-                });
-                // increment person count
-                let count = match v[0].get(&'#') { Some(count)=>count+1, None=>1 }; // Increment count
-                v[0].insert('#', count);
-            }
-            v // Return the vector (is this copied each itme?) for next fold iteration
+fn read_input_6 (filename: &str) -> Vec<HashMap<char, usize>> {
+    let mut v = vec![HashMap::new()];
+    for line in ::std::fs::read_to_string(filename).unwrap().lines() {
+        if 0 == line.len() { // Start a new hash table
+            v.insert(0, HashMap::new());
+        } else { // increment person '#' and letter counts
+            *(v[0].entry('#').or_insert(0)) += 1;
+            line.chars().for_each( |ch| *(v[0].entry(ch).or_insert(0)) += 1 );
         }
-    ) // fold
-    .iter()
-    //.inspect( |h| println!("{:?}", h) )
-    .fold( 0, |c :usize, h| {
-        if part1 { // Part 1 
-            c + h.len() - 1 // Subtract the passenger count entry I'm keeping in the hash table
-        } else { // Part 2
-            let peoplecount = h.get(&'#').unwrap();
-            c + h.iter().map( |(k, v)| if *k != '#' && *v == *peoplecount { 1 } else { 0 } ).sum::<usize>()
-        }
-    })
-    .checked_add(0usize).ok_or(ioerr())
+    }
+    v
+}
+
+// Sum how man questions were answered (hash
+// entires), subtracting the passenger hash entry.
+fn day6a (h: &Vec<HashMap<char,usize>>) -> usize {
+    h.iter().map( |h| h.len() - 1 ).sum::<usize>()
+}
+
+// Sum how many questions were answered by all people in each
+// group (same count), subtracting passenger hash entry.
+fn day6b (h: &Vec<HashMap<char,usize>>) -> usize {
+    h.iter().map( |h| {
+        let nump = h.get(&'#').unwrap();
+        h.values().filter( |v| *v == nump ).count() - 1
+    }).sum()
 }
 
 fn day6 () {
     ::std::println!("== {}:{} ::{}::day6() ====", std::file!(), core::line!(), core::module_path!());
-    println!("Result A: {:?}\n", doit6("data/input6.txt", true));
-    println!("Result B: {:?}", doit6("data/input6.txt", false));
+    let h = read_input_6("data/input6.txt");
+    println!("Result A: {:?}", day6a(&h));
+    println!("Result B: {:?}", day6b(&h));
 }
 // Day 6
 ////////////////////////////////////////////////////////////////////////////////
+// Day 7
+type H7 = HashMap<String, HashMap<String, usize>>;
+
+fn read7 (filename: &str) -> H7 {
+    Regex::new(r"(.*) bags contain (.*)\.").unwrap()
+    .captures_iter(&::std::fs::read_to_string(filename).unwrap())
+    .map( |cap| (
+            cap[1].chars().collect::<String>(), // key/bag
+            cap[2].chars().collect::<String>()  // Map of bag counts
+            .split(", ").filter( |sub| sub != &"no other bags" )
+            .map( |sub| Regex::new(r"(\d+) (.*) bags?").unwrap().captures(&sub).unwrap() )
+            .map( |cap|
+                    (cap[2].to_string(), // key/bag
+                     cap[1].parse::<usize>().unwrap())) // count
+            .collect::<HashMap<_,_>>() ) )
+    .collect::<HashMap<_,_>>()
+}
+
+fn find7a<'a> (h: &'a H7, n: &str) -> HashSet<&'a str> {
+    h.iter()
+    .filter( |(_,v)| v.get(n).is_some() ) // Find parent bags containing n
+    .fold(
+        HashSet::new(),
+        |mut s, (k,_)| {
+            s.insert(k); // Keep track of n's parent bags
+            find7a(h, k).iter().for_each( |k| { s.insert(k); } ); // Gather their parents, etc
+            s
+        }
+    )
+}
+
+fn doit7a (filename: &str) -> usize {
+    find7a(&read7(filename), &"shiny gold")
+    .iter()
+    .count()
+}
+
+fn find7b<'a> (h: &'a H7, mem: &mut HashMap<String, usize>, b: &str) -> usize {
+    if let Some(v) = mem.get(b) {
+        *v // Memoized sub-bag count
+    } else {
+        let sum = h.get(b).unwrap().iter().map( |(k,v)| v * (1 + find7b(h, mem, k))).sum();
+        mem.insert(b.to_string(), sum); // Memoize bag count
+        sum
+    }
+}
+
+fn doit7b (filename: &str) -> usize {
+    find7b(&read7(filename), &mut HashMap::new(), "shiny gold")
+}
+
+fn day7 () {
+    ::std::println!("== {}:{} ::{}::day7() ====", std::file!(), core::line!(), core::module_path!());
+    println!("Result A: {:?}", doit7a("data/input7.txt"));
+    println!("Result B: {:?}", doit7b("data/input7.txt"));
+}
+
+// Day 7
+////////////////////////////////////////////////////////////////////////////////
 // Day j
+fn ioerr () -> ::std::io::Error { ::std::io::Error::new(::std::io::ErrorKind::Other, "") }
 
 fn doitj (filename: &str) -> ::std::io::Result<usize> {
     ::std::fs::read_to_string(filename)?
@@ -264,7 +319,7 @@ fn doitj (filename: &str) -> ::std::io::Result<usize> {
 
 fn dayj () {
     ::std::println!("== {}:{} ::{}::dayj() ====", std::file!(), core::line!(), core::module_path!());
-    println!("Result A: {:?}\n", doitj("data/inputj.txt"));
+    println!("Result A: {:?}", doitj("data/inputj.txt"));
     println!("Result B: {:?}", doitj("data/inputj.txt"));
 }
 // Day j
@@ -297,6 +352,9 @@ pub fn main() {
     day6();
     // Result A: Ok(6612)
     // Result B: Ok(3268)
+    day7();
+    // Result A: 144
+    // Result B: 5956
     }
     dayj();
 }
