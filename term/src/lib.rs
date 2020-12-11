@@ -175,7 +175,7 @@ impl Term {
         }
         print!("\x1b[0m"); // Reset color
         print!("\x1b[?25h"); // Enable Cursor
-        print!("\x1b[{}H", self.rows); // Cursor to screen bottom
+        //print!("\x1b[{}H", self.rows); // Cursor to screen bottom
         util::flush();
     }
 

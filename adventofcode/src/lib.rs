@@ -1,5 +1,6 @@
 use std::collections::{HashMap, HashSet};
 use regex::Regex;
+use std::fs::{read_to_string};
 
 ////////////////////////////////////////////////////////////////////////////////
 // Day 1
@@ -307,20 +308,364 @@ fn day7 () {
 
 // Day 7
 ////////////////////////////////////////////////////////////////////////////////
-// Day j
-fn ioerr () -> ::std::io::Error { ::std::io::Error::new(::std::io::ErrorKind::Other, "") }
+// Day 8
+#[derive (Debug)]
+enum Op { NOP, ACC, JMP, XXX }
 
-fn doitj (filename: &str) -> ::std::io::Result<usize> {
-    ::std::fs::read_to_string(filename)?
+#[derive (Debug)]
+struct Inst { inst: Op, val: i32, dirty: bool }
+
+type Prog = Vec<Inst>;
+
+fn clear8 (prog: &mut Prog) {
+    for inst in prog { inst.dirty = false; }
+}
+
+fn parse8 (thefile: &str) -> Prog {
+    thefile.lines()
+    //.inspect( |l| println!("LINE {}", l) )
+    .map( |l| l.split(" ").collect::<Vec<_>>() )
+    .map( |v|
+        Inst{
+            inst:  match &v[0] { &"nop" => Op::NOP, &"acc"=>Op::ACC, &"jmp"=>Op::JMP, _=>Op::XXX },
+            val:   v[1].parse::<i32>().unwrap(),
+            dirty: false} )
+    .collect::<Prog>()
+}
+
+fn run8 (prog: &mut Prog, mut ip: usize, errorondirty: bool) -> Option<i32> {
+    let mut acc :i32 = 0;
+    while {//print!("[{}] ", ip);
+           ip < prog.len()}
+          && {// println!("{:?} {:?}", prog[ip].inst, prog[ip].val);
+              true } {
+        if prog[ip].dirty {
+             //println!("ERROR: Cycle! acc={} Halting.", acc);
+             return if errorondirty { None } else { Some(acc) }
+        }
+        prog[ip].dirty = true;
+        let inst :&Op  = &prog[ip].inst;
+        let val  :i32 = prog[ip].val;
+        
+        match inst {
+            Op::ACC => { ip += 1; acc += val; },
+            Op::JMP => { ip = (ip as i32  + val) as usize; },
+            Op::NOP => { ip += 1; }
+            Op::XXX => { println!("XXX"); return None; }
+        }
+    }
+    if ip == prog.len() {
+        println!("");
+        Some(acc) // Program went past memory, The only good case.
+    } else {
+        //println!("\nERROR: Went over last instruction.");
+        None
+    }
+}
+
+fn doit8b (thefile: &str) -> Option<i32> {
+    let mut prog = parse8(thefile);
+    //run8(&mut prog, 0) // 643 last instruction
+    for i in 0 .. prog.len() {
+        match prog[i].inst {
+        Op::JMP  => {
+            //println!("Replacing [{}] {:?} {:?} to NOP", i, prog[i].inst, prog[i].val);
+            prog[i].inst = Op::NOP;
+            if let Some(ret) = run8(&mut prog, 0, true) { return Some(ret); }
+            prog[i].inst = Op::JMP;
+            clear8(&mut prog);
+        },
+        Op::NOP => {
+            //println!("Replacing [{}] {:?} {:?} to JMP", i, prog[i].inst, prog[i].val);
+            prog[i].inst = Op::JMP;
+            if let Some(ret) = run8(&mut prog, 0, true) { return Some(ret); }
+            prog[i].inst = Op::NOP;
+            clear8(&mut prog);
+        }
+        _ => {}
+        }
+    }
+    None
+}
+
+fn doit8a (thefile: &str) -> Option<i32> {
+    let mut prog = parse8(thefile);
+    run8(&mut prog, 0, false) // 643 last instruction
+}
+
+fn day8 () {
+    println!("== {}:{} ::{}::day8() ====", std::file!(), core::line!(), core::module_path!());
+    let thefile = read_to_string(&"data/input8.txt").unwrap_or("0:a\n1:b".to_string());
+    println!("Result 8a: {:?}", doit8a(&thefile));
+    println!("Result 8b: {:?}", doit8b(&thefile));
+}
+// Day 8
+////////////////////////////////////////////////////////////////////////////////
+// Day 9
+type Adt9 = Vec<i64>;
+
+fn parse9 (filename: &str) -> Adt9 {
+    read_to_string(filename).unwrap_or("".to_string())
     .lines()
-    .inspect( |e| println!("<< {}", e) )
-    .count().checked_add(0).ok_or(ioerr())
+    .map( |e| e.parse::<i64>().unwrap() )
+    //.inspect( |e| println!("<< {}", e) )
+    //.count()
+    .collect::<Vec<i64>>()
+}
+
+fn find_sum9(v: &[i64], pin: &i64) -> bool {
+    v.iter().enumerate()
+    .any( |(i, n)|
+        v.iter()
+        .skip(i)
+        .any( |m| *pin == n + m ) )
+}
+
+fn doit9a (data: &Adt9) -> i64 {
+   *data.iter()
+    .skip(25).enumerate()
+    .filter( |(i, e)| !find_sum9(&data[*i..*i+25], *e) ) // Find e that doesn't match
+    .inspect( |(_, e)| println!("<< {}", *e) )
+    .nth(0).unwrap().1
+}
+
+fn doit9b (data: Adt9, pin: i64) -> i64 {
+    for i in 0..data.len() {
+        for j in 2..data.len()+1 {
+            let sum = data.iter().skip(i).take(j).sum();
+            if pin < sum { break }
+            if pin == sum {
+                 let mut sorted = data.iter().skip(i).take(j).collect::<Vec<_>>();
+                 sorted.sort();
+                 return sorted[0] + sorted[sorted.len()-1];
+            }
+        }
+    }
+    return 0
+}
+
+fn day9 () {
+    ::std::println!("== {}:{} ::{}::day9() ====", std::file!(), core::line!(), core::module_path!());
+    let data = parse9("data/input9.txt");
+    let num = doit9a(&data);
+    println!("Result 9a: {:?}", num);
+    println!("Result 9b: {:?}", doit9b(data, num));
+}
+// Day 9
+////////////////////////////////////////////////////////////////////////////////
+// Day10 
+type Adt10 = Vec<usize>;
+
+fn parse10 (filename: &str) -> Adt10 {
+    read_to_string(filename).unwrap()
+    .lines()
+    .map( |e| e.parse::<usize>().unwrap())
+    .collect::<Adt10>()
+}
+
+fn doit10a (data: &[usize], last: usize) -> usize {
+    if 0 == data.len() {
+        1 << (3-1) * 8
+    } else {
+        let num = data[0];
+        doit10a(&data[1..], num) + (1 << (num-last-1)*8)
+    }
+}
+
+fn doit10b (data: &[usize], last :usize, mem: &mut HashMap<String, usize>) -> usize {
+    let key = format!("{}{:?}", last, data);
+    if let Some(v) = mem.get(&key) { return *v } // Cached?
+    let num = data[0];
+    if 3 < num-last {
+       0
+    } else if data.len() == 1 {
+       1
+    } else {
+        let res = doit10b(&data[1..], num, mem) + doit10b(&data[1..], last, mem);
+        mem.insert(key, res);
+        res
+    }
+}
+
+fn day10 () {
+    ::std::println!("== {}:{} ::{}::day10() ====", std::file!(), core::line!(), core::module_path!());
+    let mut data = parse10("data/input10.txt");
+    data.sort();
+
+    let res = doit10a(&data, 0);
+    println!("Result 10a: res = {} {} product = {:?}", res>>16, res%256, (res>>16) * (res%256));
+
+    data.push(3 + data[data.len()-1]); // Append mine
+    let mut mem = HashMap::new();
+    let res = doit10b(&data, 0, &mut mem);
+    println!("Result 10b: {:?}", res);
+}
+
+// Day 10
+////////////////////////////////////////////////////////////////////////////////
+// Day11 
+type B11 = HashMap<(i32,i32),i32>;
+
+fn parse11 (filename: &str) -> B11 {
+    read_to_string(filename).unwrap().lines().enumerate()
+    .map(
+        |(y, l)|
+        l.chars().enumerate()
+        .map(|(x,c)| ((x as i32 ,y as i32 ), match c { '.'=>1, 'L'=>2, '#'=>3, _=>0 } as i32))
+        .collect::<Vec<_>>() )
+    .flatten()
+    .collect::<B11>()
+}
+
+fn counts11 (data:&B11) -> (i32, i32, i32) {
+    data.iter()
+    .fold( (0,0,0), |r,h|
+     match h.1 {
+         1=>(r.0+1, r.1,   r.2),
+         2=>(r.0,   r.1+1, r.2),
+         3=>(r.0  , r.1,   r.2+1),
+         _=>r
+    })
+}
+
+
+
+fn neighbors11a (data:&B11, x:i32, y:i32) -> i32 {
+    0 +
+    match data.get(&(x+1,y))   { Some(x) => if 3 == *x { 1 } else { 0 }, _ => 0 } +
+    match data.get(&(x-1,y  )) { Some(x) => if 3 == *x { 1 } else { 0 }, _ => 0 } +
+    match data.get(&(x  ,y+1)) { Some(x) => if 3 == *x { 1 } else { 0 }, _ => 0 } +
+    match data.get(&(x  ,y-1)) { Some(x) => if 3 == *x { 1 } else { 0 }, _ => 0 } +
+
+    match data.get(&(x+1,y+1)) { Some(x) => if 3 == *x { 1 } else { 0 }, _ => 0 } +
+    match data.get(&(x-1,y+1)) { Some(x) => if 3 == *x { 1 } else { 0 }, _ => 0 } +
+    match data.get(&(x-1,y-1)) { Some(x) => if 3 == *x { 1 } else { 0 }, _ => 0 } +
+    match data.get(&(x+1,y-1)) { Some(x) => if 3 == *x { 1 } else { 0 }, _ => 0 }
+}
+
+fn next_gen11a (h:&B11) -> B11 {
+    h.iter()
+    .map( |((x,y), v)|
+        match v {
+            2 => if 0 == neighbors11a(&h, *x,*y) { ((*x, *y),3) } else { ((*x, *y),2) },
+            3 => if 4 <= neighbors11a(&h, *x,*y) { ((*x, *y),2) } else { ((*x, *y),3) },
+            _ => ((*x,*y),*v)
+        })
+    .collect::<B11>()
+}
+
+fn day11a (h: &B11) -> i32 {
+    let mut counts = counts11(h);
+    let mut next :B11 = next_gen11a(h); 
+    loop {
+        let counts2 = counts11(&next);
+        if counts2 == counts { break counts.2 }
+        counts = counts2;
+        next = next_gen11a(&next);
+    }
+}
+
+
+fn newcoor2b (x:i32, y:i32, d:usize) -> (i32, i32) {
+   match d {
+       0 => (x+1,y  ),
+       1 => (x+1,y+1),
+       2 => (x  ,y+1),
+       3 => (x-1,y+1),
+       4 => (x-1,y  ),
+       5 => (x-1,y-1),
+       6 => (x  ,y-1),
+       7 => (x+1,y-1),
+       _ => (x,y)
+   }
+}
+
+fn occupieddir11b (h:&B11, x:i32, y:i32, d:usize) -> i32 {
+    let mut c = (x,y);
+    loop {
+       c = newcoor2b(c.0, c.1, d);
+       match h.get(&c) {
+           Some(v) =>
+            match *v {
+                3 => break 1, // found a body
+                2 => break 0, // found seat
+                 _ => ()
+            }, 
+            None => break 0 // found edge
+       }
+    }
+}
+
+fn countseats11b (h:&B11, x:i32, y:i32) -> i32 {
+    occupieddir11b(h, x,y, 0) + 
+    occupieddir11b(h, x,y, 1) + 
+    occupieddir11b(h, x,y, 2) + 
+    occupieddir11b(h, x,y, 3) + 
+    occupieddir11b(h, x,y, 4) + 
+    occupieddir11b(h, x,y, 5) + 
+    occupieddir11b(h, x,y, 6) + 
+    occupieddir11b(h, x,y, 7)
+}
+
+fn next_gen11b (h:&B11) -> B11 {
+    h.iter()
+    .map( |((x,y), v)|
+        match v {
+            2 => if 0 == countseats11b(&h, *x,*y) { ((*x, *y),3) } else { ((*x, *y),2) },
+            3 => if 5 <= countseats11b(&h, *x,*y) { ((*x, *y),2) } else { ((*x, *y),3) },
+            _ => ((*x,*y),*v)
+        })
+    .collect::<B11>()
+}
+
+
+fn day11b (h: &B11) -> i32 {
+    let mut counts = counts11(h);
+    let mut next :B11 = next_gen11b(h); 
+    loop {
+        let counts2 = counts11(&next);
+        if counts2 == counts { break counts.2 }
+        counts = counts2;
+        next = next_gen11b(&next);
+    }
+}
+
+fn day11 () {
+    ::std::println!("== {}:{} ::{}::day11() ====", std::file!(), core::line!(), core::module_path!());
+    let h :B11 = parse11("data/input11.txt");
+    println!("Result 11a: {:?}", day11a(&h)); // 2113
+    println!("Result 11b: {:?}", day11b(&h)); // 1865
+}
+// Day11 
+////////////////////////////////////////////////////////////////////////////////
+// Day j
+type Adtj = HashMap<usize,String>;
+
+fn parsej (filename: &str) -> Adtj {
+    read_to_string(filename).unwrap()
+    .lines()
+    .enumerate()
+    .map( |(i,e)| {
+         println!("<< {}", e);
+         (i,e.to_string())
+    })
+    .collect::<Adtj>()
+}
+
+fn doitja (data: &Adtj) -> usize {
+    data
+    .values()
+    .enumerate()
+    .map( |(i,e)| (e, data.values().take(i+1).collect::<Vec<_>>()))
+    .inspect( |e| println!("{:?}", e))
+    .count()
 }
 
 fn dayj () {
     ::std::println!("== {}:{} ::{}::dayj() ====", std::file!(), core::line!(), core::module_path!());
-    println!("Result A: {:?}", doitj("data/inputj.txt"));
-    println!("Result B: {:?}", doitj("data/inputj.txt"));
+    let data = parsej("data/inputj.txt");
+    println!("Result ja: {:?}", doitja(&data));
+    //println!("Result Jb: {:?}", parsej("data/inputj.txt"));
 }
 // Day j
 ////////////////////////////////////////////////////////////////////////////////
@@ -355,6 +700,18 @@ pub fn main() {
     day7();
     // Result A: 144
     // Result B: 5956
+    day8();
+    // Result 8a: Some(1867)
+    // Result 8b: Some(1303)
+    day9();
+    // Result 9a: 18272118
+    // Result 9b: 2186361
+    day10();
+    // Result 10a: res = 36 69 product = 2484
+    // Result 10b: 15790581481472
+    day11();
+    // Result 11a: 2113
+    // Result 11b: 1865
     }
     dayj();
 }

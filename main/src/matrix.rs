@@ -2,6 +2,8 @@ use ::std::fmt;
 use ::std::ops::{Add, Mul, AddAssign, MulAssign};
 use ::std::time::{SystemTime};
 use ::piston_window::*;
+use ::opengl_graphics::*;
+use ::graphics::Graphics;
 
 const CF2 :&str = "\x1b[32m";
 
@@ -17,7 +19,7 @@ struct State {
 impl State {
     fn new() -> State {
         State{
-            W:1200.0, H:600.0, // window
+            W:1400.0, H:700.0, // window
             x:0.0, y:0.0, z:0.0, // player
             mx:0.0, my:0.0, // mouse
             tick:0,
@@ -144,6 +146,15 @@ impl MulAssign<f64> for M4 {
         self.e *= s;  self.f *= s;  self.g *= s;
         self.i *= s;  self.j *= s;  self.k *= s;
         self.m *= s;  self.n *= s;  self.o *= s;
+    }
+}
+
+impl MulAssign<[f64;3]> for M4 {
+    fn mul_assign(&mut self, s:[f64;3]) {
+        self.a *= s[0];  self.b *= s[1];  self.c *= s[2];
+        self.e *= s[0];  self.f *= s[1];  self.g *= s[2];
+        self.i *= s[0];  self.j *= s[1];  self.k *= s[2];
+        self.m *= s[0];  self.n *= s[1];  self.o *= s[2];
     }
 }
 
@@ -409,20 +420,56 @@ struct Orn {
     poly: Vec<V4>,
     mat: M4,
     c: [f32; 4],
-    update: bool
+    update: bool,
+    alive: bool
 }
 
 fn make_polys() -> Vec<Orn> {
     let mut polys: Vec<Orn> = vec!();
 
-    let mut y = 0.0; // height of square to play square along the cone
+    // Floor
+    /*
+    for y in 0..10 {
+        for x in 0..10 {
+            polys.push(
+                Orn {
+                    poly: vec![
+                        [-1.0, 0.0, -1.0, 1.0],
+                        [ 1.0, 0.0, -1.0, 1.0],
+                        [ 1.0, 0.0,  1.0, 1.0],
+                        [-1.0, 0.0,  1.0, 1.0]],
+                    mat: (M4_ID * 0.5) + [-9.0 + (2*x) as f64, -1.0, -9.0 + (2*y) as f64],
+                    c: [crate::r32(0.2)+0.2, 0.0, 0.0, 1.0],
+                    update: false,
+                    alive: true
+                });
+        }
+    }
+    for y in 0..10 {
+        for x in 0..10 {
+            polys.push(
+                Orn {
+                    poly: vec![
+                        [-1.0, 0.0, -1.0, 1.0],
+                        [ 1.0, 0.0, -1.0, 1.0],
+                        [ 1.0, 0.0,  1.0, 1.0],
+                        [-1.0, 0.0,  1.0, 1.0]],
+                    mat: (M4_ID * 0.5) + [-9.0 + (2*x) as f64, 5.0, -9.0 + (2*y) as f64],
+                    c: [crate::r32(0.2)+0.2, 0.0, 0.0, 1.0],
+                    update: false,
+                    alive: true
+                });
+        }
+    }
+    */
 
-    for i in 0..1000 {
+    // Game of life cylinder
+    for y in 0..50 {
+      for x in 0..200 {
         let mut mat = M4_ID;
-        y += 0.1 - crate::r64(i as f32) / 50000.0;
-        mat *= Rot::RotY(crate::r64(6.28));
-        mat += [0.0,  (50.0 - y)/100.0,  (2.0+i as f64/40.0)/100.0];
-        mat *= 0.002 ;
+        mat *= Rot::RotY(6.28 * x as f64 / 200.0);
+        mat += [0.0, y as f64 / 20.0 - 0.5, 1.0];
+        mat *= [0.01, 0.02, 0.00];
         polys.push(
             Orn {
                 poly: vec![
@@ -432,22 +479,38 @@ fn make_polys() -> Vec<Orn> {
                     [-1.0,  1.0,  0.0, 1.0]],
                 mat: mat,
                 c: [crate::r32(1.0), crate::r32(1.0), crate::r32(1.0), 0.5],
-                update: true
+                update: false,
+                alive: true
+            } // Orn
+        );
+      } // x
+    } // y
+
+    /*
+    let mut y = 0.0; // height of square to play square along the cone
+    for i in 0..1000 {
+        let mut mat = M4_ID;
+        y += 0.1 - crate::r64(i as f32) / 50000.0;
+        mat *= Rot::RotY(crate::r64(6.28));
+        mat += [0.0,  -y/100.0,  (2.0+i as f64/40.0)/100.0];
+        mat *= 0.005;
+        scalePost(&mut mat, [0.2, 0.2, 0.2]);
+        polys.push(
+            Orn {
+                poly: vec![
+                    [-1.0, -1.0,  0.0, 1.0],
+                    [ 1.0, -1.0,  0.0, 1.0],
+                    [ 1.0,  1.0,  0.0, 1.0],
+                    [-1.0,  1.0,  0.0, 1.0]],
+                mat: mat,
+                c: [crate::r32(1.0), crate::r32(1.0), crate::r32(1.0), 0.5],
+                update: true,
+                alive: true
             } // Orn
         );
     }
+    */
 
-    polys.push(
-        Orn {
-            poly: vec![
-                [-1.0, 0.0, -1.0, 1.0],
-                [ 1.0, 0.0, -1.0, 1.0],
-                [ 1.0, 0.0,  1.0, 1.0],
-                [-1.0, 0.0,  1.0, 1.0]],
-            mat: (M4_ID * 0.5) + [0.0, -1.0, 0.0],
-            c: [0.0, 0.5, 0.0, 0.1],
-            update: false
-        });
 
     polys
 }
@@ -455,12 +518,12 @@ fn make_polys() -> Vec<Orn> {
 // Render //////////////////////////////////////////////////////////////////////
 
 fn render_polygons (
-    state: &mut State,
-    args: &RenderArgs,
-    context: & ::graphics::Context,
+    context: & ::graphics::Context, // the global transform
     gfx: &mut ::opengl_graphics::GlGraphics,
+    state: &mut State,
     polys: &mut Vec<Orn>,
-    offset: f64
+    offset: f64,
+    dbuff: Option<&::life::dbuff::Dbuff>
 ) {
     let i = state.tick as f64; // Global parameters for animation
     let mut ii = 0.0f64; // Local counter for animation
@@ -472,11 +535,29 @@ fn render_polygons (
     gmat += [state.x, state.z, state.y]; // Must move camera location
 
     gmat += [0.0, 0.0, offset]; // Translate everything in scene
-    gmat *= Rot::RotY(i / 50.0); // Spin everything in scene around it's y-axis origin
+    //gmat *= Rot::RotY(i / 50.0); // Spin everything in scene around it's y-axis origin
 
     ::graphics::clear([0.0, 0.0, 0.0, 1.0], gfx); // Clear framebuffer
 
-    for poly in polys.iter_mut() {
+    // Determine which Game Of Life cells are visible
+    if let Some(dbuff) = dbuff {
+    let goloffset = 0;
+    for (i, e) in dbuff.get(0).iter().zip(dbuff.get(1).iter()).enumerate() {
+        if *e.0 != *e.1 {
+            if *e.0 == 0 {  // Died
+                polys[i+goloffset].c[0] = 0.1;
+                polys[i+goloffset].c[1] = 0.1;
+                polys[i+goloffset].c[2] = 0.1;
+            } else { // Born
+                polys[i+goloffset].c[0] = crate::r32(1.0);
+                polys[i+goloffset].c[1] = crate::r32(1.0);
+                polys[i+goloffset].c[2] = crate::r32(1.0);
+            }
+        }
+    } 
+    }
+
+    for poly in polys.iter_mut() { if poly.alive {
         let mut mat :M4 = gmat * poly.mat; // Create new transform matrix from global * object
         if poly.update {
             mat *= Rot::RotZ(i / 10.0); // Mutate object's transform
@@ -486,55 +567,85 @@ fn render_polygons (
         }
         ii += 0.01;
 
-        // Transform and cull each polygon
+        // Transform and cull this polygon
         let polys = poly.poly
             .iter()
             .map( |v| xformperspectivecull(&mat, &v) )
             .filter( |v| ::std::f64::NAN != v[0])
-            .collect::<Vec<[f64; 2]>>();
+            .map( |i| [i[0] as f32, i[1] as f32])
+            .collect::<Vec<[f32; 2]>>();
 
         // Render each visible polygon
+
+        /*
         ::graphics::polygon(
             poly.c,
             &polys,
-            [[1.0, 0.0, 0.0], // Fixed 2d transform...
-             [0.0, 1.0, 0.0]],
-            //context.transform, // ...figure out how this works
+            [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]], // Fixed 2d transform WAS context.transform,
             gfx);
+        */
 
-    } // for poly
+        gfx.tri_list( &context.draw_state, &poly.c, |f| (f)( 
+            &[ [polys[0][0], polys[0][1]],
+               [polys[1][0], polys[1][1]],
+               [polys[2][0], polys[2][1]],
+               
+               [polys[0][0], polys[0][1]],
+               [polys[2][0], polys[2][1]],
+               [polys[3][0], polys[3][1]]]
+        ))
+
+
+    } } // if alive // for poly
 } // fn render
 
 // REPL ////////////////////////////////////////////////////////////////////////
 
 fn fun_piston() -> Result<usize, Box<dyn ::std::error::Error>>{
-    let ver = ::opengl_graphics::OpenGL::V3_2;
     let mut state: State = State::new();
 
-    let pwsettings =
-        ::piston_window::WindowSettings::new( "ASCIIRhOIDS", [state.W as u32, state.H as u32] );
+    let mut polys = make_polys();
+    let mut life = ::life::Life::new(200, 50);
+    //life.clear();
 
+    let mut events = Events::new( ::piston_window::EventSettings::new().max_fps(180) );
+
+    let ver = ::opengl_graphics::OpenGL::V3_2;
+    /*
     let mut pwin: ::glutin_window::GlutinWindow =
-        pwsettings
+        ::piston_window::WindowSettings::new( "ASCIIRhOIDS", [state.W as u32, state.H as u32] )
             .graphics_api(ver)
             .exit_on_esc(true)
             .size(piston_window::Size{width: state.W, height: state.H})
             .decorated(true)
             .build()?;
+    */
+    let mut pwin = ::glutin_window::GlutinWindow::new(
+       &::piston_window::WindowSettings::new( "ASCIIRhOIDS", [state.W as u32, state.H as u32] )
+        .graphics_api(ver)
+        .exit_on_esc(true)
+        .size(piston_window::Size{width: state.W, height: state.H})
+        .decorated(true)
+    ).unwrap();
 
-    let mut polys = make_polys();
-    let mut events = Events::new( ::piston_window::EventSettings::new().max_fps(10) );
-    let mut glgfx = ::opengl_graphics::GlGraphics::new(ver);
+    //let mut glgfx = ::opengl_graphics::GlGraphics::new(ver);
+    let glsl = ver.to_glsl();
+    let colored = ::opengl_graphics::Colored::new(glsl);
+    let textured = ::opengl_graphics::Textured::new(glsl);
+    let texturedcolor = ::opengl_graphics::TexturedColor::new(glsl);
+    let mut glgfx = ::opengl_graphics::GlGraphics::from_pieces(colored, textured, texturedcolor);
 
-    while let Some(event) = events.next(&mut pwin) { match event {
+    while let Some(event) = events.next(&mut pwin) { match event { // -OR-  Some(event) = pwin.next()"
         Event::Loop(Loop::Render(args)) => {
-            println!("\x1b[0;32m Event::Loop::Render {:?}", args);
-            glgfx.draw(
-                args.viewport(),
-                | context: graphics::Context,
-                  gfx: &mut ::opengl_graphics::GlGraphics
-                | { render_polygons(&mut state, &args, &context, gfx, &mut polys, 1.0); }
-            );
+            //println!("\x1b[0;32m Event::Loop::Render {:?}", args);
+            if life.tick % 15 == 0 { life.add_glider(0, 0); }
+            if life.tick % 100 == 0 { life.randomize(); }
+            let dbuff = life.gen_next().render_dbuff();
+
+            let c = glgfx.draw_begin(args.viewport());
+                render_polygons(&c, &mut glgfx, &mut state, &mut polys, 1.0, Some(dbuff));
+            glgfx.draw_end();
+
             state.tick().printfps(true); // Increment frame count
         },
         Event::Input(Input::Resize(ResizeArgs{window_size, draw_size}), _) => {
@@ -551,12 +662,12 @@ fn fun_piston() -> Result<usize, Box<dyn ::std::error::Error>>{
             //println!("Event::Input::Button == {:?} {:?} {:?}", s, b, c);
             match k {
                 Key::Q => pwin.set_should_close(true),
-                Key::S => { state.x += -0.01 * (state.mx).sin();  state.y += -0.01 * (state.mx).cos() },
-                Key::A => { state.x +=  0.01 * (state.mx).sin();  state.y +=  0.01 * (state.mx).cos() },
-                Key::D => { state.x +=  0.01 * (state.mx+1.570796).sin(); state.y +=  0.01 * (state.mx+1.570796).cos() },
-                Key::F => { state.x +=  0.01 * (state.mx-1.570796).sin(); state.y +=  0.01 * (state.mx-1.570796).cos() },
-                Key::V => { state.z -=  0.01 },
-                Key::C => { state.z +=  0.01 },
+                Key::S => { state.x += -0.05 * (state.mx).sin();  state.y += -0.05 * (state.mx).cos() },
+                Key::A => { state.x +=  0.05 * (state.mx).sin();  state.y +=  0.05 * (state.mx).cos() },
+                Key::D => { state.x +=  0.05 * (state.mx+1.570796).sin(); state.y +=  0.05 * (state.mx+1.570796).cos() },
+                Key::F => { state.x +=  0.05 * (state.mx-1.570796).sin(); state.y +=  0.05 * (state.mx-1.570796).cos() },
+                Key::V => { state.z -=  0.05 },
+                Key::C => { state.z +=  0.05 },
                 Key::Space => { ::util::sleep(500) },
                 _ => ()
             }

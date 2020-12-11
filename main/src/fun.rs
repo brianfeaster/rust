@@ -1,8 +1,11 @@
 #![allow(dead_code, unused_variables, non_snake_case)]
+use std::collections::{HashMap, HashSet};
 
+// External
 use ::std::{fs, thread};
 use ::std::ops::{Range};
 use ::piston_window::*;
+// Local
 use ::util::{self};
 use ::term::{Term};
 
@@ -41,28 +44,16 @@ pub fn fun_split() {
 }
 
 fn fun_tuples() {
-    let t = (1, 2);
-    let s = (11, {
-        println!("hi");
-        22
-    });
-    println!("[tuples]  t= {:?}", t.1);
-    println!(
-        "[tuples]  s= {:?}",
-        loop {
-            break if true { s.1 } else { t.1 };
-        }
-    );
+    let s = (11, { println!("fun_tuples"); 22 });
+    println!( "Tuple.? = {:?}", loop { break if true { s.0 } else { s.1 }; });
 }
 
 type Vi32 = Vec<i32>;
 
-fn fun_map(_term: &mut Term) {
+fn fun_map() {
     let r = (17..=20).collect::<Vi32>();
     //println!("{:?}", &r); // Can't move this after the for loop
-    for i in &r {
-        println!("{:?}", i);
-    }
+    for i in &r { println!("{:?}", i); }
     println!("{:?}", r);
     let v = 5;
     println!("map {:?}",  (0..=v).map(|x| x / 2_i32).collect::<Vec<i32>>()); // type std::ops::RangeInclusive
@@ -70,8 +61,8 @@ fn fun_map(_term: &mut Term) {
 }
 
 fn fun_write_non_block(term: &mut Term) {
-    //term.terminalraw();
-    //term.termnonblock();
+    term.terminalraw();
+    term.termnonblock();
     use std::io::Write;
     loop {
         match std::io::stdout().write(b"abcdefghijklmnopqrstuvwxyz") {
@@ -91,9 +82,10 @@ fn fun_write_non_block(term: &mut Term) {
         }
     }
     //||->Result<(), &str> {Err("no")?;Ok(())}().unwrap_err().as_bytes());
+    term.done();
 }
 
-fn fun_getc_loop(term: &Term) {
+fn fun_wait_q_press(term: &Term) {
     term.terminalraw();
     //term.termblock();
     let mut s: String = String::new();
@@ -109,13 +101,13 @@ fn fun_getc_loop(term: &Term) {
 
 fn fun_thread(term: Term) {
     thread::spawn(move || {
-        fun_getc_loop(&term);
+        fun_wait_q_press(&term);
         println!("thread done.]");
     });
     let mut c = 10;
     let term = Term::new();
     while 0 < c {
-        fun_getc_loop(&term);
+        fun_wait_q_press(&term);
         println!("[c={}]", c);
         c -= 1;
         util::sleep(500);
@@ -296,26 +288,18 @@ pub fn fun_piston_walk() {
         skip: 11,
         dir: 0,
     };
-    let mut window: PistonWindow = WindowSettings::new("ASCIIRhOIDS", [W as u32, H as u32])
+    let mut pwindow: PistonWindow = WindowSettings::new("ASCIIRhOIDS", [W as u32, H as u32])
         .exit_on_esc(true)
         .decorated(true)
         .build()
         .unwrap();
     let mut kolor = [crate::r32(1.0), crate::r32(1.0), crate::r32(1.0), 1.0];
     let mut next = mb.next().unwrap();
-    let de : Event = loop {
-        match window.next() {
-            Some(event) => {
-                if event.render_args() != None { break event }
-            },
-            _ => { }
-        }
-    };
 
-    while let Some(event) = window.next() {
+    while let Some(event) = pwindow.next() {
         if event.text_args() != None && event.text_args().unwrap() == "q" { break; }
         if event.render_args() == None { continue; } // Skip any non-render event.
-        window.draw_2d(
+        pwindow.draw_2d(
             &event,
             |context: piston_window::Context,
              graphics,
@@ -333,7 +317,7 @@ pub fn fun_piston_walk() {
         if 1 == count % 2 {
             kolor = [crate::r32(1.0), crate::r32(1.0), crate::r32(1.0), 1.0];
             next = mb.next().unwrap();
-            //window.set_title(format!("{:?}", kolor));
+            //pwindow.set_title(format!("{:?}", kolor));
         }
         count = count + 1;
     }
@@ -375,22 +359,151 @@ fn fun_overload() {
     m *= 11.0;
     println!("{:?}", m);
 }
+////////////////////////////////////////////////////////////////////////////////
+
+fn fun_goto<T> (mut i: usize) -> usize {
+ 'a:loop {
+     'b:loop{
+            match i { 0=>break'b, _=>{i-=1;continue'a} }
+        }
+        break'a i;
+    }
+    .checked_add(0)
+    .map( |e| {
+        println!("Returning {}", e);
+        e } )
+    .unwrap()
+}
+
+////////////////////////////////////////////////////////////////////////////////
+type Maze = HashMap<[i32;2],[f32;4]>;
+
+fn fun_maze_render(pwin: &mut PistonWindow, m: &Maze) -> i32 {
+    while let Some(event) = pwin.next() { match event { // -OR-  Some(event) = pwin.next()"
+        Event::Loop(Loop::Render(args)) => {
+        pwin.draw_2d( &event, |c: Context, g: &mut G2d, _d: &mut GfxDevice | {
+            clear([0.0, 0.0, 0.0, 1.0], g);
+
+            let xmin = m.iter().map( |(k,v)| k[0]).min().unwrap();
+            let xmax = m.iter().map( |(k,v)| k[0]).max().unwrap();
+            let xsize = (xmax - xmin) as f64;
+
+            let ymin = m.iter().map( |(k,v)| k[1]).min().unwrap();
+            let ymax = m.iter().map( |(k,v)| k[1]).max().unwrap();
+            let ysize = (ymax - ymin) as f64;
+            //println!("{} x{} {}   y{} {}", m.len(), xmin, xmax, ymin, ymax);
+            let f = 2.0;
+
+            m.iter().inspect( |(k,v)| {
+                rectangle(
+                    **v,
+                    [k[0] as f64, k[1] as f64, 1.0, 1.0],
+                    [[f/xsize, 0.0,  ((xmax as f64 + xmin as f64 + 1.0) / -2.0) * (f/xsize) ],
+                     [0.0, f/ysize,  ((ymax as f64 + ymin as f64 + 1.0) / -2.0) * (f/ysize) ]],
+                    g);
+            }).count();
+        });
+        return -1;
+        }, Event::Input(Input::Button(ButtonArgs{state:s, button:Button::Keyboard(k), scancode:_}), _) => {
+            match k {
+                Key::Q => { pwin.set_should_close(true);},
+                Key::J => { return 3 }
+                Key::K => { return 1 }
+                Key::L => { return 0 }
+                Key::H => { return 2 }
+                Key::Space => { return 4 }
+                _ => ()
+            };
+        }, _ => () }
+    }
+    return 42;
+}
+
+fn newloc (mut loc: [i32;2], dir: u32, amt: i32) -> [i32;2] {
+    match dir%4 { 0 => loc[0] += amt, 1 => loc[1] += amt, 2 => loc[0] -= amt, 3 => loc[1] -= amt, _ => () };
+    loc
+}
+
+fn locmove (loc: &mut [i32;2], rd: u32) {
+    match rd { 0 => loc[0] += 1, 1 => loc[1] += 1, 2 => loc[0] -= 1, 3 => loc[1] -= 1, _ => () };
+}
+
+fn locpeek (m: &Maze, loc0: [i32;2], d: u32) -> bool{
+    // Something in our way?
+    let loc = newloc(loc0, d, 1);
+    if m.get(&loc).is_some() { return true }
+    if m.get(&newloc(loc, d,   1)).is_some() { return true } // In front of new spot?
+    if m.get(&newloc(loc, d+3, 1)).is_some() { return true } // Right of new spot?
+    if m.get(&newloc(loc, d+1, 1)).is_some() { return true } // Left of new spot?
+
+    let loc = newloc(loc, d, 1);
+    if m.get(&newloc(loc, d+3, 1)).is_some() { return true } // Diagonal right of new spot
+    if m.get(&newloc(loc, d+1, 1)).is_some() { return true } // Diagonal left of new spot
+    false
+}
+
+pub fn ri32() -> i32 { ::rand::random::<i32>() }
+pub fn ru32() -> u32 { ::rand::random::<u32>() }
+pub fn rf32() -> f32 { ::rand::random::<f32>() }
+
+fn fun_maze() {
+    let (W, H) = (320, 240);
+    let mut pwin: PistonWindow =
+        WindowSettings::new("ASCIIRhOIDS", [W as u32, H as u32])
+        .exit_on_esc(true).decorated(true).build().unwrap();
+    pwin.set_max_fps(120);
+    
+    let mut m :Maze = HashMap::new();
+    let mut crazy = true;
+    let mut loc = [0, 0];
+    let mut k = [rf32()*0.2+0.8, rf32()*0.2+0.8, rf32()*0.2+0.8, 1.0];
+    let mut rd = 0;
+    m.insert(loc, k);
+    loop {
+        match fun_maze_render(&mut pwin, &m) {
+            0 =>  { rd=0; crazy = false; },
+            1 =>  { rd=1; crazy = false; },
+            2 =>  { rd=2; crazy = false; },
+            3 =>  { rd=3; crazy = false; },
+            4 =>  { crazy = true; },
+           42 =>  break,
+           _ => { if !crazy { continue }  }
+        }
+        let mut retry = 3;
+        loop {
+            if !crazy { break }
+            // peek
+            rd = ru32() % 4;
+            if !locpeek(&m, loc, rd) { break } // Can move in this direction
+            if retry < 1 { // Choose a new location in the maze if we can't walk in new direction
+                loc = *m.iter().nth( ri32() as usize % m.len() ).unwrap().0;
+            } else {
+                retry -= 1;
+            }
+            k = [rf32()*0.1+0.5, rf32()*0.1+0.5, rf32()*0.1+0.5, 1.0];
+        }
+
+        locmove(&mut loc, rd); m.insert(loc, k);
+    }
+}
+
 
 ////////////////////////////////////////////////////////////////////////////////
 pub fn main() {
     ::std::println!("== {}:{} ::{}::main() ====", std::file!(), core::line!(), core::module_path!());
-    //let term = Term::new();
     //self::fun_split();
     //fun_tuples();
-    //fun_map(term);
-    //fun_write_non_block(term);
-    //fun_getc_loop(term);
-    //fun_thread(term);
+    //fun_map();
+    //let mut term = Term::new();
+    //fun_write_non_block(&mut term);
+    //fun_wait_q_press(&term);
+    //fun_thread(&term);
     //fun_walk_iter();
     //fun_read_file_pair();
-    //for e in fun_read_poly_file("ship.dat") { println!("{:?}", e); }
+    //for e in fun_read_poly_file("data/ship.dat") { println!("{:?}", e); }
     //fun_piston_walk();
     //self::fun_fizzbuzz();
-    crate::matrix::main();
     //crate::fun::fun_overload();
+    //println!("{:?}", fun_goto(5));
+    fun_maze();
 }

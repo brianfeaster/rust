@@ -1,7 +1,6 @@
-/// Delta Buffer.  Keeps track of last buffer for delta comparison
+#![allow(dead_code)]
 
-use piston_window::*;
-
+/// Delta Buffer.  Keeps track of last buffer for manual delta comparison
 #[derive(Debug)]
 pub struct Dbuff {
     pub buffa: Vec<i32>,
@@ -11,12 +10,19 @@ pub struct Dbuff {
 
 impl Dbuff {
 
-    pub fn put (&mut self, v :&[i32]) -> &Self {
+    pub fn put (&mut self, v :&[i32]) -> &mut Self {
         match self.tick & 1 {
             0 => self.buffa.extend_from_slice(v),
             _ => self.buffb.extend_from_slice(v)
         }
         self
+    }
+
+    pub fn get (&self, last: usize) -> &Vec<i32> {
+        match (self.tick + last) & 1 {
+            0 => &self.buffa,
+            _ => &self.buffb
+        }
     }
 
     pub fn tick (&mut self) -> &mut Self {
@@ -33,15 +39,16 @@ impl Dbuff {
         self
     }
 
-    /// Pub DBuff in a "all elemtns are different" state
+    /// Put both buffers in a "all elemtns are different" state
     pub fn new (len :usize) -> Dbuff {
-        let ba = Vec::with_capacity(len);
+        let mut ba = Vec::with_capacity(len);
         let mut bb = Vec::with_capacity(len);
-        bb.resize(len, -1);
+        ba.resize(len, -1);
+        bb.resize(len, -2);
         Dbuff {
-            buffa :ba,
-            buffb :bb,
-            tick : 0
+            buffa: ba,
+            buffb: bb,
+            tick:  0
         }
     }
 }

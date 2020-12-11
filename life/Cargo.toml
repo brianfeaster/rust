@@ -5,6 +5,7 @@ authors = ["b f <brianf@geemale.kom>"]
 edition = "2018"
 
 [dependencies]
+term = { path = "../term" }
 util = { path = "../util" }
 log = "0.4.11"
 pretty_env_logger = "0.4.0"

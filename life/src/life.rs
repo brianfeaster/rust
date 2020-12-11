@@ -1,70 +1,60 @@
+#![allow(dead_code, unused_assignments, unused_imports, unused_variables, non_snake_case)]
 use ::std::sync::{Arc, Mutex};
 use ::std::thread::{spawn, JoinHandle};
 use ::std::time::{SystemTime};
 use ::std::ops::{Range};
 use ::piston_window::*;
 
-////////////////////////////////////////////////////////////////////////////////
-/// TODO: message passing pipeline
-///   Verify a thread crashing with a lock and subsequent threads receiving
-///   invalid locks can communicate the new state (machine).
-///
-
-////////////////////////////////////////////////////////////////////////////////
-/// Game of life state machine.  Let's try and make this concept happen.
-///
-#[derive(Debug)]
-struct State {
-    power :bool,
-    randomize :bool,
-    delta: usize,
-    tick: usize,
-    key: String,
-    threads: usize
-}
-
-impl State {
-    /*
-    pub fn next (self :&mut State,
-                 tt :& crate::term::Tbuff) -> &State {
-        self.tick += 1;
-        //self.randomize = false;
-        self.key = tt.getc();
-        match self.key.as_str() {
-            "q" => self.power = false,
-            " " => self.randomize = true,
-            _ => ()
-        }
-        self
-    */
-    pub fn next (self :&mut State) -> &State {
-        self.tick += 1;
-        //self.randomize = false;
-        self
-    }
-    pub fn powered (self :& State) -> bool { self.power }
-
-    pub fn randomize (self :&mut State) -> bool {
-        let r = self.randomize;
-        self.randomize=false;
-        r
-    }
-
-    pub fn new () -> State {
-        State {
-            power :true,
-            tick :0,
-            randomize :true,
-            key  :"".to_string(),
-            delta: 0,
-            threads: 8
-        }
-    }
-}
-
-
-////////////////////////////////////////////////////////////////////////////////
 /// Game of life
+
+/// Random boolean integer 32 bit.  Returns 0 or 1 with probability 1/m.
+pub fn rbi32(m: u32) -> i32 { ((::rand::random::<u32>() % m) == 0) as i32 }
+
+// Arena ///////////////////////////////////////////////////////////////////////
+
+type Arena = Arc<Vec<Mutex<Vec<i32>>>>;
+
+fn arena_new (w: usize, h: usize) -> Arena  {
+    Arc::new(
+        (0..h).map(
+            |_| Mutex::new(
+                (0..w).map(|_| rbi32(10) )
+                .collect::<Vec<_>>()))
+        .collect::<Vec<Mutex<Vec<_>>>>())
+}
+
+fn draw_glider (aa :& Arena, x :usize, y :usize) {
+    aa[y+0].lock().unwrap()[x+2] = 1;
+    aa[y+1].lock().unwrap()[x+2] = 1;
+    aa[y+2].lock().unwrap()[x+2] = 1;
+    aa[y+2].lock().unwrap()[x+1] = 1;
+    aa[y+1].lock().unwrap()[x+0] = 1;
+}
+
+/// Copy arena to double buffer
+fn arena_render (
+    aa :&Arena,
+    dd :&mut crate::dbuff::Dbuff
+) {
+    dd.tick(); // Tick the double buffer
+    for y in (0..aa.len()).rev() {
+        dd.put(&aa[y].lock().unwrap());
+    }
+}
+
+fn arena_clear (bb :&Arena, w :usize, h :usize) {
+    for y in 0..h {
+        let mut row = bb[y].lock().unwrap();
+        for x in 0..w { row[x] = 0; }
+    }
+}
+
+fn arena_randomize (bb :&Arena, w :usize, h :usize) {
+    for y in 0..h {
+        let mut row = bb[y].lock().unwrap();
+        for x in 0..w { row[x] = rbi32(10); }
+    }
+}
 
 /// Update/mutate the next gen of life in row 'bb' given the current
 /// row 'rb', the row above 'ra', and row below 'rc'.
@@ -101,8 +91,8 @@ fn genNewRows (
         aa      :&Arena,
         bb      :&Arena,
         range   :Range<usize>,
-        h       :usize,
         w       :usize,
+        h       :usize,
         threads :&mut Vec<JoinHandle<()>>,
         spins   :&Arc<Mutex<usize>>) {
     let aa = aa.clone();
@@ -111,6 +101,7 @@ fn genNewRows (
     let a = range.start;
     let b = range.end;
     threads.push(spawn( move || {
+        //println!("genNewRows:: {:?} {:?}", a, b);
         for i in range { // Over the rows...
             loop { // Lock the four rows and generate new row or retry...
                 let ral = aa[(i+h-1) % h].try_lock();
@@ -148,80 +139,45 @@ fn genNewRows (
     }));
 }
 
-////////////////////////////////////////////////////////////////////////////////
-
-/// Copy arena to double buffer
-fn arena_render (
-    aa :&Arena,
-    tt :&mut crate::dbuff::Dbuff
-) {
-    for y in (0..aa.len()).rev() {
-        tt.put(&aa[y].lock().unwrap());
-    }
-}
-
-fn arena_randomize (bb :&Arena, w :usize, h :usize) {
-    for y in 0..h {
-        let mut row = bb[y].lock().unwrap();
-        for x in 0..w {
-            row[x] = crate::ri32bi(10);
-       }
-    }
-}
-
-
-// Arena ///////////////////////////////////////////////////////////////////////
-
-type Arena = Arc<Vec<Mutex<Vec<i32>>>>;
-
-fn arena_new (w: usize, h: usize) -> Arena  {
-    Arc::new(
-        (0..h).map(
-            |_| Mutex::new(
-                (0..w).map(|_| crate::ri32bi(10) )
-                .collect::<Vec<_>>()))
-        .collect::<Vec<Mutex<Vec<_>>>>())
-}
-
-fn draw_glider (aa :& Arena, x :usize, y :usize) {
-        aa[10].lock().unwrap()[10] = 1;
-        aa[11].lock().unwrap()[10] = 1;
-        aa[12].lock().unwrap()[10] = 1;
-        aa[12].lock().unwrap()[9] = 1;
-        aa[11].lock().unwrap()[8] = 1;
-}
 
 // Life ////////////////////////////////////////////////////////////////////////
 
-struct Life {
+pub struct Life {
     whs:    (usize, usize, usize),
     arenas: (Arena, Arena), // Nested mutable ADTs that can be passed to threads
     dbuffs: (crate::dbuff::Dbuff, crate::dbuff::Dbuff),// Piston is 2xbuffered so we need a dbuff for each
+    pub tick: usize,
     state: bool,
+    randomize: bool, // Randomizes field on next generation
+    clear: bool,
     threads: usize,
+    delta: usize,
 }
 
-impl Life {
-    pub fn new (w: usize, h: usize) -> Life {
-        Life {
-            whs: (w, h, w*h),
-            arenas: (
-                arena_new(w, h),
-                arena_new(w, h) ),
-            dbuffs: (
-                crate::dbuff::Dbuff::new(w*h),
-                crate::dbuff::Dbuff::new(w*h) ),
-            state: false,
-            threads: 1
-        }
+impl Life { pub fn new (w: usize, h: usize) -> Life {
+    Life {
+        whs: (w, h, w*h),
+        arenas: ( arena_new(w, h), arena_new(w, h) ),
+        dbuffs: (
+            crate::dbuff::Dbuff::new(w*h),
+            crate::dbuff::Dbuff::new(w*h) ),
+        tick: 0,
+        state: false,
+        randomize: false,
+        clear: false,
+        threads: 1,
+        delta: 0
     }
-    pub fn randomize (&self) -> &Self {
-        match self.state {
-            false => arena_randomize(&self.arenas.1, self.whs.0, self.whs.1),
-            true  => arena_randomize(&self.arenas.0, self.whs.0, self.whs.1)
-        }
+} }
+
+impl Life {
+    pub fn tick (&mut self) -> &mut Self {
+        self.tick += 1;
+        self.state = !self.state;
         self
     }
+    pub fn randomize (&mut self) -> &mut Self { self.randomize=true; self }
+    pub fn clear (&mut self) -> &mut Self { self.clear=true; self }
     pub fn add_glider (&self, x: usize, y: usize) -> &Self {
         match self.state {
             false => draw_glider(&self.arenas.0, x, y),
@@ -229,153 +185,167 @@ impl Life {
         }
         self
     }
-    pub fn genNext (&self) -> &Self {
-        let (aa, bb) = // aa is the current arena (to read/dump), bb the next arena (to generate/overwrite)
-            match self.state {
-                false => (&self.arenas.0, &self.arenas.1),
-                true  => (&self.arenas.1, &self.arenas.0)
-            };
-        let w = self.whs.0;
-        let h = self.whs.1;
-        let mut threads :Vec<JoinHandle<()>> = vec!();
-        let spins = Arc::new(Mutex::new(0)); // Keep track of mutex spins
-
-        match self.threads {
-        1 => {
-            genNewRows(aa, bb, 0..h, h, w, &mut threads, &spins); // 240
-        },
-
-        2 => {
-            genNewRows(aa, bb, 0   .. h/2, h, w, &mut threads, &spins); // 470
-            genNewRows(aa, bb, h/2 .. h,   h, w, &mut threads, &spins);
-        },
-
-        3 => {
-            genNewRows(aa, bb, 0     .. h/3,   h, w, &mut threads, &spins); // 620
-            genNewRows(aa, bb, h/3   .. h*2/3, h, w, &mut threads, &spins);
-            genNewRows(aa, bb, h*2/3 .. h,     h, w, &mut threads, &spins);
-        },
-
-        4 => {
-            genNewRows(aa, bb, h*0/4 .. h*1/4, h, w, &mut threads, &spins); // 710
-            genNewRows(aa, bb, h*1/4 .. h*2/4, h, w, &mut threads, &spins);
-            genNewRows(aa, bb, h*2/4 .. h*3/4, h, w, &mut threads, &spins);
-            genNewRows(aa, bb, h*3/4 .. h*4/4, h, w, &mut threads, &spins);
-        },
-
-        5 => {
-            genNewRows(aa, bb, h*0/5 .. h*1/5, h, w, &mut threads, &spins); // 720
-            genNewRows(aa, bb, h*1/5 .. h*2/5, h, w, &mut threads, &spins);
-            genNewRows(aa, bb, h*2/5 .. h*3/5, h, w, &mut threads, &spins);
-            genNewRows(aa, bb, h*3/5 .. h*4/5, h, w, &mut threads, &spins);
-            genNewRows(aa, bb, h*4/5 .. h*5/5, h, w, &mut threads, &spins);
-        },
-
-        6 => {
-            genNewRows(aa, bb, h*0/6 .. h*1/6, h, w, &mut threads, &spins); // 800
-            genNewRows(aa, bb, h*1/6 .. h*2/6, h, w, &mut threads, &spins);
-            genNewRows(aa, bb, h*2/6 .. h*3/6, h, w, &mut threads, &spins);
-            genNewRows(aa, bb, h*3/6 .. h*4/6, h, w, &mut threads, &spins);
-            genNewRows(aa, bb, h*4/6 .. h*5/6, h, w, &mut threads, &spins);
-            genNewRows(aa, bb, h*5/6 .. h*6/6, h, w, &mut threads, &spins);
-        },
-
-        7 => {
-            genNewRows(aa, bb, h*0/7 .. h*1/7, h, w, &mut threads, &spins); // 820
-            genNewRows(aa, bb, h*1/7 .. h*2/7, h, w, &mut threads, &spins);
-            genNewRows(aa, bb, h*2/7 .. h*3/7, h, w, &mut threads, &spins);
-            genNewRows(aa, bb, h*3/7 .. h*4/7, h, w, &mut threads, &spins);
-            genNewRows(aa, bb, h*4/7 .. h*5/7, h, w, &mut threads, &spins);
-            genNewRows(aa, bb, h*5/7 .. h*6/7, h, w, &mut threads, &spins);
-            genNewRows(aa, bb, h*6/7 .. h*7/7, h, w, &mut threads, &spins);
-        },
-
-        8 => {
-            genNewRows(aa, bb, h*0/8 .. h*1/8, h, w, &mut threads, &spins); // 830
-            genNewRows(aa, bb, h*1/8 .. h*2/8, h, w, &mut threads, &spins);
-            genNewRows(aa, bb, h*2/8 .. h*3/8, h, w, &mut threads, &spins);
-            genNewRows(aa, bb, h*3/8 .. h*4/8, h, w, &mut threads, &spins);
-            genNewRows(aa, bb, h*4/8 .. h*5/8, h, w, &mut threads, &spins);
-            genNewRows(aa, bb, h*5/8 .. h*6/8, h, w, &mut threads, &spins);
-            genNewRows(aa, bb, h*6/8 .. h*7/8, h, w, &mut threads, &spins);
-            genNewRows(aa, bb, h*7/8 .. h*8/8, h, w, &mut threads, &spins);
-        },
-
-        9 => {
-            genNewRows(aa, bb, h*0/9 .. h*1/9, h, w, &mut threads, &spins); // 700
-            genNewRows(aa, bb, h*1/9 .. h*2/9, h, w, &mut threads, &spins);
-            genNewRows(aa, bb, h*2/9 .. h*3/9, h, w, &mut threads, &spins);
-            genNewRows(aa, bb, h*3/9 .. h*4/9, h, w, &mut threads, &spins);
-            genNewRows(aa, bb, h*4/9 .. h*5/9, h, w, &mut threads, &spins);
-            genNewRows(aa, bb, h*5/9 .. h*6/9, h, w, &mut threads, &spins);
-            genNewRows(aa, bb, h*6/9 .. h*7/9, h, w, &mut threads, &spins);
-            genNewRows(aa, bb, h*7/9 .. h*8/9, h, w, &mut threads, &spins);
-            genNewRows(aa, bb, h*8/9 .. h*9/9, h, w, &mut threads, &spins);
-        },
-        _ => ()
-        } // match
-        for _ in 0..threads.len() { threads.pop().unwrap().join().unwrap(); }
-        self
-    }
-    pub fn render (&self) -> &Self {
-        /*
-        let (aa, bb) = // aa is the current arena (to read/dump), bb the next arena (to generate/overwrite)
-            match self.state {
-                false => (&self.arenas.0, &self.arenas.1),
-                true  => (&self.arenas.1, &self.arenas.0)
-            };
-        let tt =
-            match self.state {
-                false => &mut self.dbuffs.0,
-                true  => &mut self.dbuffs.1
-            };
-        arena_render(&aa, tt); // Copy to delta frame buffer
-        let delta :usize = 0;
-        pwin.draw_2d(
-            &event,
-            |context:  piston_window::Context,
-                graphics: &mut piston_window::G2d,
-                _device:  &mut piston_window::GfxDevice
-            | { dumpPiston(&tt, &mut state.delta, w, h, context, graphics); }
-        );
-        tt.tick();
-        */
-        self
+    pub fn render_dbuff (&mut self) -> &crate::dbuff::Dbuff {
+        let aa = match self.state {
+            false => &self.arenas.0,
+            true  => &self.arenas.1
+        };
+        arena_render(aa, &mut self.dbuffs.0); // Copy to delta frame buffer
+        self.tick();
+        &self.dbuffs.0
     }
 }
 
+impl Life {
+pub fn gen_next (&mut self) -> &mut Self {
+    let (aa, bb) = // aa is the current arena (to read/dump), bb the next arena (to generate/overwrite)
+        match self.state {
+            false => (&self.arenas.0, &self.arenas.1),
+            true  => (&self.arenas.1, &self.arenas.0)
+        };
+
+    let spins = Arc::new(Mutex::new(0)); // Keep track of mutex spins TODO
+
+    if self.randomize {
+        self.randomize = false;
+        arena_randomize(bb, self.whs.0, self.whs.1);
+    } else if self.clear {
+        self.clear = false;
+        arena_clear(bb, self.whs.0, self.whs.1);
+    } else {
+        // Spawn the threads to generate the next generation
+        let mut threads :Vec<JoinHandle<()>> = vec!();
+        let (w, h,_) = self.whs;
+        for p in 0 .. self.threads {
+            let range = h*p/self.threads .. h*(p+1)/self.threads;
+            //print!("{:?} ", range);
+            genNewRows(aa, bb, range, w, h, &mut threads, &spins);
+        }
+        //println!("");
+        // Wait for threads to finish
+        for t in 0..threads.len() { 
+            //println!("Waiting on thread {}", t);
+            threads.pop().unwrap().join().unwrap();
+        }
+    }
+    self
+}
+}
+
+impl Life {
+pub fn render (
+    &mut self,
+    pwin:  &mut PistonWindow,
+    event: Event,
+    cellsize: f64
+) -> &Self {
+    let (aa, dd) = // aa is the current arena to render/read/dump
+        match self.state {
+            false => (&self.arenas.0, &mut self.dbuffs.0),
+            true  => (&self.arenas.1, &mut self.dbuffs.1)
+        };
+    arena_render(aa, dd); // Copy to delta frame buffer
+    let mut delta :usize = 0; // Count number of changes from last aren
+    let (w, h, _) = self.whs;
+    pwin.draw_2d(
+        &event,
+        |context:  piston_window::Context,
+            graphics: &mut piston_window::G2d,
+            _device:  &mut piston_window::GfxDevice
+        | { dumpPiston(dd, &mut delta, w, h, context, graphics, cellsize); }
+    );
+    self.tick(); // Tick myself
+    self.delta = delta;
+    self
+}
+}
+
+pub fn dumpPiston (
+    this: &crate::dbuff::Dbuff,
+    writes: &mut usize,
+    width: usize,
+    height: usize,
+    context  :piston_window::Context,
+    graphics :&mut G2d,
+    cellsize: f64
+) {
+    let (ba, bb) = 
+        match this.tick & 1 {
+            0 => (&this.buffa, &this.buffb),
+            _ => (&this.buffb, &this.buffa)
+        };
+    let mut col :usize = 0;
+    let mut row :usize = 0;
+    //clear([0.0, 0.0, 0.0, 1.0], graphics);
+
+    let recBlue  = Rectangle{
+        color: [0.0, 0.0, 1.0, 1.0],
+        shape: rectangle::Shape::Square,
+        border: None //Some(rectangle::Border{ color:[0.0, 1.0, 0.0, 1.0], radius:0.3 })
+    };
+    let recBlack = Rectangle{
+        color: [0.0, 0.0, 0.0, 1.0],
+        shape: rectangle::Shape::Square,
+        border: None //Some(rectangle::Border{ color:[0.0, 0.0, 0.0, 1.0], radius:0.3 })
+    };
+
+    let drawState = DrawState {
+        blend: None, //Some(draw_state::Blend::Alpha),
+        stencil: None,
+        scissor: None};
+    let mut poly = [0.0, 0.0, 0.0, 0.0];
+    let xform = context.transform;
+    for i in 0..width*height {
+        if ba[i] != bb[i] {
+            *writes += 1;
+            poly[0] = col as f64 * cellsize;
+            poly[1] = row as f64 * cellsize;
+            poly[2] = cellsize;
+            poly[3] = cellsize;
+            if 0 != ba[i] {
+                recBlue.draw_tri(poly, &drawState, xform, graphics);
+            }else {
+                recBlack.draw_tri(poly, &drawState, xform, graphics);
+            }
+        }
+        col += 1;
+        if col == width { col = 0; row += 1; } 
+    }
+    if false {
+    Rectangle{
+        color: [0.0, 0.0, 0.0, 0.02],
+        shape: rectangle::Shape::Square,
+        border: None
+    }.draw_tri(
+        [-1.0, -1.0, 2.0, 2.0],
+        &DrawState {
+            blend: Some(draw_state::Blend::Alpha),
+            stencil: None,
+            scissor: None},
+        [[1.0,0.0,0.0],
+         [0.0,1.0,0.0]],
+        graphics);
+    }
+    //rectangle( [ 1.0, 0.0, 0.0, 1.0 ], [ 50.0, 50.0, 50.0, 50.0 ], context.transform, graphics);
+} // fn dumpPiston
+
+
 ////////////////////////////////////////////////////////////////////////////////
 
-fn life () {
-    let life :Life = Life::new(200, 110);
-    let mut state :State = State::new();
-    let epoch :SystemTime = SystemTime::now(); // For FPS calculation
-
-    let mut pwin :PistonWindow =
-        WindowSettings::new("ASCIIRhOIDS", [256 as u32, 256 as u32])
+fn mainLife1 (w: usize, h: usize, cellsize: usize) {
+    let mut life :Life = Life::new(w, h);
+    let cellsize = 5;
+    let winSize = (life.whs.0*cellsize, life.whs.1*cellsize);
+    let mut epoch :SystemTime = SystemTime::now(); // For FPS calculation
+    let mut frameCount = 0;
+    let mut pwin: PistonWindow =
+        WindowSettings::new("ASCIIRhOIDS", [winSize.0 as u32, winSize.1 as u32])
             //.exit_on_esc(true)
-            .size(piston_window::Size{width :1200_f64, height :600_f64})
+            .size(piston_window::Size{width: winSize.0 as f64, height: winSize.1 as f64})
             .decorated(true)
             .build()
             .unwrap();
-
-
-    while state.powered() && state.tick < 50000 { // Loop until keypress 'q'
-
-        //::util::sleep(200);
-        
-        // Draw a glider periodically
-        if 0 == state.tick % 14 { life.add_glider(5, 5);  }
-
-
-        // Either randomize the visible field or compute next generation
-        if state.randomize() {
-            life.randomize();
-        } else {
-            life.genNext();
-        }
-
-        //for _ in 0..threads.len() { threads.pop().unwrap().join().unwrap(); }
+    pwin.set_max_fps(120);
 
         /* Ghetto dump arena
         for y in 0..24 {
@@ -388,130 +358,78 @@ fn life () {
         print!("\x1b[H");
         */
 
-        // Draw the arena.
-        let renderp = 0 == state.tick % 1;
+    //::util::sleep(1 * 1000);
+    //println!("{:?}", event);
 
-        if renderp {
-            while let Some(event) = pwin.next() {
-                //::log::info!("{:?}", event);
-                if event.idle_args() != None { break; }
-                if event.resize_args() != None {
-                    ::log::info!("{:?}", event);
-                }
-                if event.button_args() != None {
-                    if event.button_args().unwrap().button == Button::Keyboard(Key::Escape) { state.power = false; }
-                }
-                if event.text_args() != None {
-                    if event.text_args().unwrap() == "q" { state.power = false; }
-                    if event.text_args().unwrap() == " " { state.randomize = true; }
-                } else if event.render_args() != None {
-                    life.render();
-                    break;
-                }
-            } // while event
-        } // render
-
-        //tt.dump().flush();
-        if 0 == state.tick % 100  {
-            print!("\n\x1b[0;35m t:{} FPS:{:7.2} F:{} D:{} S:{}\x1b[40m  ",
-                state.threads,
-                1000.0 * state.tick as f32 / epoch.elapsed().unwrap().as_millis() as f32,
-                state.tick,
-                state.delta,
+    while let Some(event) = pwin.next() {
+        match event { // events.next(&mut pwin)
+        Event::Loop(Loop::Idle(IdleArgs{dt})) => { },
+        Event::Input(Input::Resize(ResizeArgs{window_size, draw_size}), _) => { },
+        Event::Input(Input::Button(ButtonArgs{state:s, button:Button::Keyboard(k), scancode:_}), _) => {
+            match k {
+                Key::Space  => { life.randomize(); },
+                Key::C      => { life.clear(); },
+                Key::Q |
+                Key::Escape => { pwin.set_should_close(true); },
+                _ => ()
+            }
+        },
+        Event::Loop(Loop::Render(args)) => {
+            //println!("{:?}", args);
+            //life.randomize();
+            life.gen_next();
+            life.render(&mut pwin, event, cellsize as f64);
+            frameCount += 1;
+        },
+        _ => () } // match
+        if 0 == life.tick % 50 { life.add_glider(10, 10); } // Draw a glider periodically
+        if 50000 < life.tick { pwin.set_should_close(true); }
+        if 1.0 < epoch.elapsed().unwrap().as_secs_f32() {
+            println!("\x1b[0;35m threads:{} FPS:{:7.2} frame:{} deltas:{} spins:{}\x1b[40m  ",
+                life.threads,
+                frameCount as f32 / epoch.elapsed().unwrap().as_secs_f32(),
+                life.tick,
+                life.delta,
                 0 //spins.lock().unwrap()
                 );
-            ::util::flush();
+            frameCount = 0;
+            epoch = SystemTime::now();
         }
-
-        //state.next(&tbuff); // Needs to be mutable
-        state.next();
-    }
-    //tbuff.done(); // Reset terminal
-    println!("{}", epoch.elapsed().unwrap().as_millis());
+    } // while Some(event)
 }
 
-pub fn dumpPiston (
-    this :&crate::dbuff::Dbuff,
-    writes: &mut usize,
-    width  :usize,
-    height :usize,
-    context  :piston_window::Context,
-    graphics :&mut G2d
-) {
-    let (ba, bb) = 
-        match this.tick & 1 {
-            0 => (&this.buffa, &this.buffb),
-            _ => (&this.buffb, &this.buffa)
-        };
-    let mut col=0;
-    let mut row=0;
-    //clear([0.0, 0.0, 0.0, 1.0], graphics);
-    for i in 0..width*height {
-        if ba[i] != bb[i] {
-            *writes += 1;
-            rectangle(
-                if 0 != ba[i] { [ 0.0, 0.0, 1.0, 1.0 ] } else { [ 0.0, 0.0, 0.0, 1.0 ] },
-                [ col as f64 * 6.0, row as f64 * 6.0,
-                6.0,                6.0],
-                context.transform,
-                graphics);
-        }
-        col += 1;
-        if col == width { col = 0; row += 1; } 
-    }
-} // Dbuff::dumpPiston
+pub fn dumpLife (dbuff :& crate::dbuff::Dbuff, width: usize, idx: usize) {
+    dbuff.get(idx).iter().enumerate().for_each( |(i, e)| {
+        if 0 == i % width { println!("") }
+        print!("{}", match *e { 0 => '.', 1 => '@', _ => '?'});
+    } );
+}
 
-pub fn testA () {
-    let mut a = vec!(0,0,0,0,0);
-    let mut b = vec!(0,1,1,1,0);
-    let mut c = vec!(0,0,0,1,0);
-    let mut d = vec!(0,0,1,0,0);
-    let mut e = vec!(0,0,0,0,0);
-
-    let mut A = vec!(0,0,0,0,0);
-    let mut B = vec!(0,0,0,0,0);
-    let mut C = vec!(0,0,0,0,0);
-    let mut D = vec!(0,0,0,0,0);
-    let mut E = vec!(0,0,0,0,0);
+pub fn mainLife2 (w: usize, h: usize) {
+    let mut life :Life = Life::new(w, h);
+    let term = ::term::Term::new();
+    term.terminalraw();
 
     loop {
-    genNewRow(5, &e, &a, &b, &mut A);
-    genNewRow(5, &a, &b, &c, &mut B);
-    genNewRow(5, &b, &c, &d, &mut C);
-    genNewRow(5, &c, &d, &e, &mut D);
-    genNewRow(5, &d, &e, &a, &mut E);
-    println!("{:?}", &A);
-    println!("{:?}", &B);
-    println!("{:?}", &C);
-    println!("{:?}", &D);
-    println!("{:?}\x1b[H", &E);
-    ::util::sleep(100);
-    genNewRow(5, &E, &A, &B, &mut a);
-    genNewRow(5, &A, &B, &C, &mut b);
-    genNewRow(5, &B, &C, &D, &mut c);
-    genNewRow(5, &C, &D, &E, &mut d);
-    genNewRow(5, &D, &E, &A, &mut e);
-    println!("{:?}", &a);
-    println!("{:?}", &b);
-    println!("{:?}", &c);
-    println!("{:?}", &d);
-    println!("{:?}\x1b[H", &e);
-    ::util::sleep(100);
+        match term.getc().as_str() { "q" => { break; } _ => () }
+        let dbuff = life.gen_next().render_dbuff();
+        dumpLife(&dbuff, w, 0);
+        println!("\x1b[H");
+        if life.tick == 1000 { break; }
+        if 0 == life.tick % 100 { life.add_glider(0,0); }
     }
+    term.done();
 }
 
 pub fn main () {
     ::std::println!("== {}:{} ::{}::main() ====", std::file!(), core::line!(), core::module_path!());
-    self::life();
+    mainLife2(140, 24);
+    mainLife1(200, 100, 4);
 }
 
+// TODO: message passing pipeline
+//   Verify a thread crashing with a lock and subsequent threads receiving
+//   invalid locks can communicate the new state (machine).
 /*
-
-NOTES
-* Glider reflectors
-
-////Spin until lock acquired
-//let mut spin = 0; // keep track of busy waiting/spinning
-//let bb = loop { match Arc::get_mut(&mut bb) { Some(bb) => break bb, _ => spin = spin + 1 } };
-
+                println!("{:?}", event);
 */
