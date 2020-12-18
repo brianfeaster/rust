@@ -1,7 +1,7 @@
 #![allow(dead_code, unused_variables, non_snake_case)]
-use std::collections::{HashMap, HashSet};
 
 // External
+use std::collections::{HashMap, HashSet};
 use ::std::{fs, thread};
 use ::std::ops::{Range};
 use ::piston_window::*;
@@ -361,7 +361,7 @@ fn fun_overload() {
 }
 ////////////////////////////////////////////////////////////////////////////////
 
-fn fun_goto<T> (mut i: usize) -> usize {
+fn fun_goto (mut i: usize) -> usize {
  'a:loop {
      'b:loop{
             match i { 0=>break'b, _=>{i-=1;continue'a} }
@@ -376,59 +376,16 @@ fn fun_goto<T> (mut i: usize) -> usize {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-type Maze = HashMap<[i32;2],[f32;4]>;
-
-fn fun_maze_render(pwin: &mut PistonWindow, m: &Maze) -> i32 {
-    while let Some(event) = pwin.next() { match event { // -OR-  Some(event) = pwin.next()"
-        Event::Loop(Loop::Render(args)) => {
-        pwin.draw_2d( &event, |c: Context, g: &mut G2d, _d: &mut GfxDevice | {
-            clear([0.0, 0.0, 0.0, 1.0], g);
-
-            let xmin = m.iter().map( |(k,v)| k[0]).min().unwrap();
-            let xmax = m.iter().map( |(k,v)| k[0]).max().unwrap();
-            let xsize = (xmax - xmin) as f64;
-
-            let ymin = m.iter().map( |(k,v)| k[1]).min().unwrap();
-            let ymax = m.iter().map( |(k,v)| k[1]).max().unwrap();
-            let ysize = (ymax - ymin) as f64;
-            //println!("{} x{} {}   y{} {}", m.len(), xmin, xmax, ymin, ymax);
-            let f = 2.0;
-
-            m.iter().inspect( |(k,v)| {
-                rectangle(
-                    **v,
-                    [k[0] as f64, k[1] as f64, 1.0, 1.0],
-                    [[f/xsize, 0.0,  ((xmax as f64 + xmin as f64 + 1.0) / -2.0) * (f/xsize) ],
-                     [0.0, f/ysize,  ((ymax as f64 + ymin as f64 + 1.0) / -2.0) * (f/ysize) ]],
-                    g);
-            }).count();
-        });
-        return -1;
-        }, Event::Input(Input::Button(ButtonArgs{state:s, button:Button::Keyboard(k), scancode:_}), _) => {
-            match k {
-                Key::Q => { pwin.set_should_close(true);},
-                Key::J => { return 3 }
-                Key::K => { return 1 }
-                Key::L => { return 0 }
-                Key::H => { return 2 }
-                Key::Space => { return 4 }
-                _ => ()
-            };
-        }, _ => () }
-    }
-    return 42;
-}
-
-fn newloc (mut loc: [i32;2], dir: u32, amt: i32) -> [i32;2] {
-    match dir%4 { 0 => loc[0] += amt, 1 => loc[1] += amt, 2 => loc[0] -= amt, 3 => loc[1] -= amt, _ => () };
+fn newloc (mut loc:(i32,i32), dir:u32, amt:i32) -> (i32,i32) {
+    match dir%4 { 0 => loc.0 += amt, 1 => loc.1 += amt, 2 => loc.0 -= amt, 3 => loc.1 -= amt, _ => () };
     loc
 }
 
-fn locmove (loc: &mut [i32;2], rd: u32) {
-    match rd { 0 => loc[0] += 1, 1 => loc[1] += 1, 2 => loc[0] -= 1, 3 => loc[1] -= 1, _ => () };
+fn locmove (loc: &mut (i32,i32), dir: u32) {
+    match dir { 0 => loc.0 += 1, 1 => loc.1 += 1, 2 => loc.0 -= 1, 3 => loc.1 -= 1, _ => () };
 }
 
-fn locpeek (m: &Maze, loc0: [i32;2], d: u32) -> bool{
+fn locpeek (m: &::util::PlotterPoints, loc0: (i32,i32), d: u32) -> bool{
     // Something in our way?
     let loc = newloc(loc0, d, 1);
     if m.get(&loc).is_some() { return true }
@@ -447,46 +404,76 @@ pub fn ru32() -> u32 { ::rand::random::<u32>() }
 pub fn rf32() -> f32 { ::rand::random::<f32>() }
 
 fn fun_maze() {
-    let (W, H) = (320, 240);
-    let mut pwin: PistonWindow =
-        WindowSettings::new("ASCIIRhOIDS", [W as u32, H as u32])
-        .exit_on_esc(true).decorated(true).build().unwrap();
-    pwin.set_max_fps(120);
-    
-    let mut m :Maze = HashMap::new();
-    let mut crazy = true;
-    let mut loc = [0, 0];
-    let mut k = [rf32()*0.2+0.8, rf32()*0.2+0.8, rf32()*0.2+0.8, 1.0];
-    let mut rd = 0;
-    m.insert(loc, k);
+    let mut pltr = ::util::Plotter::new(); 
+    let mut auto = true;
+    let mut loc = (0, 0);
+    let mut k :i32 = 1;  // color index
+    let mut kk :f32 = 0.1;
+    let mut dir = 0; // direction
+    pltr.insert(loc.0, loc.1, k); // Add pixel to hash
+    pltr.color(k, [1.0, 0.0, 0.0, 1.0]); // Add color to plotter
     loop {
-        match fun_maze_render(&mut pwin, &m) {
-            0 =>  { rd=0; crazy = false; },
-            1 =>  { rd=1; crazy = false; },
-            2 =>  { rd=2; crazy = false; },
-            3 =>  { rd=3; crazy = false; },
-            4 =>  { crazy = true; },
-           42 =>  break,
-           _ => { if !crazy { continue }  }
-        }
-        let mut retry = 3;
+        if 0 == ru32() % 1  {
+        match pltr.render().key {
+            Some('l') =>  { dir=0; auto = false; },
+            Some('k') =>  { dir=1; auto = false; },
+            Some('h') =>  { dir=2; auto = false; },
+            Some('j') =>  { dir=3; auto = false; },
+            Some(' ') =>  { auto = true; },
+            Some('q') =>  break,
+            _         => { if !auto { continue }  }
+        } }
+
+        let mut retry = 0;
+        let mut chooseNewColor = false;
         loop {
-            if !crazy { break }
+            if !auto { break }
             // peek
-            rd = ru32() % 4;
-            if !locpeek(&m, loc, rd) { break } // Can move in this direction
+            dir = ru32() % 4;
+            if !locpeek(&pltr.hm, loc, dir) { break } // Can move in this direction
             if retry < 1 { // Choose a new location in the maze if we can't walk in new direction
-                loc = *m.iter().nth( ri32() as usize % m.len() ).unwrap().0;
-            } else {
-                retry -= 1;
+                loc = *pltr.hm.iter().nth( ri32() as usize % pltr.hm.len() ).unwrap().0;
+                chooseNewColor = true;
+                continue
             }
-            k = [rf32()*0.1+0.5, rf32()*0.1+0.5, rf32()*0.1+0.5, 1.0];
+            retry -= 1;
         }
 
-        locmove(&mut loc, rd); m.insert(loc, k);
+        if chooseNewColor {
+            k += 1;
+            //pltr.color(k, [rf32()*0.5+0.5, rf32()*0.5+0.5, rf32()*0.5+0.5, 1.0]);
+            //pltr.color(k, [kk, 0.0, 0.0, 1.0]);
+            pltr.color(k, [rf32()*0.8+0.2, rf32()*0.8+0.2, rf32()*0.8+0.2, 1.0]);
+            kk += 0.001;
+            if 1.0 < kk { kk = 0.1 }
+        }
+        locmove(&mut loc, dir); pltr.insert(loc.0, loc.1, k);
+        //println!("pts{} clr{}", pltr.hm.len(), pltr.colors.len());
     }
 }
 
+fn fun_cloned() {
+    ::std::println!("== {}:{} ::{}::fun_cloned() ====", std::file!(), core::line!(), core::module_path!());
+
+    // Vector
+    let v = vec!(1,2,3,4,5,6,7,8,9,10);
+
+    // Sets
+    type Set = HashSet<usize>;
+    let g = v.iter().cloned().collect::<Set>();
+    let h = v.iter().map( |e| *e).collect::<Set>();
+
+    // Vector of sets
+    type VecSet = Vec<HashSet<usize>>;
+    let mut vh = VecSet::new();
+    vh.push(g.iter().cloned().collect::<Set>());
+    vh.push(h.iter().cloned().collect::<Set>());
+
+    println!("{:?}", v);
+    println!("{:?}", g);
+    println!("{:?}", h);
+    println!("{:?}", vh);
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 pub fn main() {
@@ -505,5 +492,6 @@ pub fn main() {
     //self::fun_fizzbuzz();
     //crate::fun::fun_overload();
     //println!("{:?}", fun_goto(5));
-    fun_maze();
+    //fun_maze();
+    //fun_cloned();
 }

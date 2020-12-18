@@ -1,9 +1,14 @@
 use ::std::fmt;
 use ::std::ops::{Add, Mul, AddAssign, MulAssign};
 use ::std::time::{SystemTime};
-use ::piston_window::*;
-use ::opengl_graphics::*;
-use ::graphics::Graphics;
+
+use ::graphics::{Graphics, DrawState};
+use ::opengl_graphics::{GlGraphics, OpenGL, Colored, Textured, TexturedColor};
+use ::piston::*;
+
+use ::glutin_window::{GlutinWindow};
+
+use ::life::*;
 
 const CF2 :&str = "\x1b[32m";
 
@@ -428,7 +433,7 @@ fn make_polys() -> Vec<Orn> {
     let mut polys: Vec<Orn> = vec!();
 
     // Floor
-    /*
+    
     for y in 0..10 {
         for x in 0..10 {
             polys.push(
@@ -461,7 +466,7 @@ fn make_polys() -> Vec<Orn> {
                 });
         }
     }
-    */
+    
 
     // Game of life cylinder
     for y in 0..50 {
@@ -518,12 +523,12 @@ fn make_polys() -> Vec<Orn> {
 // Render //////////////////////////////////////////////////////////////////////
 
 fn render_polygons (
-    context: & ::graphics::Context, // the global transform
-    gfx: &mut ::opengl_graphics::GlGraphics,
+    drawstate: &DrawState, // the global transform
+    gfx: &mut GlGraphics,
     state: &mut State,
     polys: &mut Vec<Orn>,
     offset: f64,
-    dbuff: Option<&::life::dbuff::Dbuff>
+    dbuff: Option<&Dbuff>
 ) {
     let i = state.tick as f64; // Global parameters for animation
     let mut ii = 0.0f64; // Local counter for animation
@@ -537,12 +542,15 @@ fn render_polygons (
     gmat += [0.0, 0.0, offset]; // Translate everything in scene
     //gmat *= Rot::RotY(i / 50.0); // Spin everything in scene around it's y-axis origin
 
-    ::graphics::clear([0.0, 0.0, 0.0, 1.0], gfx); // Clear framebuffer
+    gfx.clear_color([0.0, 0.0, 0.0, 1.0]);
+    gfx.clear_stencil(0);
 
     // Determine which Game Of Life cells are visible
+    let goloffset = 200;
     if let Some(dbuff) = dbuff {
-    let goloffset = 0;
-    for (i, e) in dbuff.get(0).iter().zip(dbuff.get(1).iter()).enumerate() {
+        let dbuffa = dbuff.buff();
+        let dbuffb = dbuff.bufflast();
+        for (i, e) in dbuffa.iter().zip(dbuffb.iter()).enumerate() {
         if *e.0 != *e.1 {
             if *e.0 == 0 {  // Died
                 polys[i+goloffset].c[0] = 0.1;
@@ -553,9 +561,8 @@ fn render_polygons (
                 polys[i+goloffset].c[1] = crate::r32(1.0);
                 polys[i+goloffset].c[2] = crate::r32(1.0);
             }
-        }
-    } 
-    }
+        } }
+    } // for in dbuff // if
 
     for poly in polys.iter_mut() { if poly.alive {
         let mut mat :M4 = gmat * poly.mat; // Create new transform matrix from global * object
@@ -575,17 +582,7 @@ fn render_polygons (
             .map( |i| [i[0] as f32, i[1] as f32])
             .collect::<Vec<[f32; 2]>>();
 
-        // Render each visible polygon
-
-        /*
-        ::graphics::polygon(
-            poly.c,
-            &polys,
-            [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]], // Fixed 2d transform WAS context.transform,
-            gfx);
-        */
-
-        gfx.tri_list( &context.draw_state, &poly.c, |f| (f)( 
+        gfx.tri_list( drawstate, &poly.c, |f| (f)( 
             &[ [polys[0][0], polys[0][1]],
                [polys[1][0], polys[1][1]],
                [polys[2][0], polys[2][1]],
@@ -594,9 +591,7 @@ fn render_polygons (
                [polys[2][0], polys[2][1]],
                [polys[3][0], polys[3][1]]]
         ))
-
-
-    } } // if alive // for poly
+    } } // if poly.alive // for poly
 } // fn render
 
 // REPL ////////////////////////////////////////////////////////////////////////
@@ -605,60 +600,60 @@ fn fun_piston() -> Result<usize, Box<dyn ::std::error::Error>>{
     let mut state: State = State::new();
 
     let mut polys = make_polys();
-    let mut life = ::life::Life::new(200, 50);
+    let mut life = Life::new(200, 50);
     //life.clear();
 
-    let mut events = Events::new( ::piston_window::EventSettings::new().max_fps(180) );
+    let ver = OpenGL::V3_2;
 
-    let ver = ::opengl_graphics::OpenGL::V3_2;
-    /*
-    let mut pwin: ::glutin_window::GlutinWindow =
-        ::piston_window::WindowSettings::new( "ASCIIRhOIDS", [state.W as u32, state.H as u32] )
-            .graphics_api(ver)
-            .exit_on_esc(true)
-            .size(piston_window::Size{width: state.W, height: state.H})
-            .decorated(true)
-            .build()?;
-    */
-    let mut pwin = ::glutin_window::GlutinWindow::new(
-       &::piston_window::WindowSettings::new( "ASCIIRhOIDS", [state.W as u32, state.H as u32] )
-        .graphics_api(ver)
-        .exit_on_esc(true)
-        .size(piston_window::Size{width: state.W, height: state.H})
-        .decorated(true)
-    ).unwrap();
+    let mut pwin =
+        GlutinWindow::new(
+            &WindowSettings::new( "ASCIIRhOIDS", [state.W as u32, state.H as u32] )
+                .graphics_api(ver)
+                .exit_on_esc(true)
+                .size(piston_window::Size{width: state.W, height: state.H})
+                .decorated(true)
+        ).unwrap();
 
-    //let mut glgfx = ::opengl_graphics::GlGraphics::new(ver);
+    let mut events = Events::new( EventSettings::new().max_fps(180) );
+
     let glsl = ver.to_glsl();
-    let colored = ::opengl_graphics::Colored::new(glsl);
-    let textured = ::opengl_graphics::Textured::new(glsl);
-    let texturedcolor = ::opengl_graphics::TexturedColor::new(glsl);
-    let mut glgfx = ::opengl_graphics::GlGraphics::from_pieces(colored, textured, texturedcolor);
+    let colored = Colored::new(glsl);
+    let textured = Textured::new(glsl);
+    let texturedcolor = TexturedColor::new(glsl);
+    let mut glgfx = GlGraphics::from_pieces(colored, textured, texturedcolor);
 
-    while let Some(event) = events.next(&mut pwin) { match event { // -OR-  Some(event) = pwin.next()"
-        Event::Loop(Loop::Render(args)) => {
-            //println!("\x1b[0;32m Event::Loop::Render {:?}", args);
+    life.gen_next();
+
+    while let Some(event) = events.next(&mut pwin) { match event {
+        Event::Loop( Loop::Render(args) ) => {
             if life.tick % 15 == 0 { life.add_glider(0, 0); }
             if life.tick % 100 == 0 { life.randomize(); }
-            let dbuff = life.gen_next().render_dbuff();
+
+            life.arena_xfer_dbuff();
+            // Wait for threads to finish
+            for t in 0 .. life.threadvec.len() {
+                life.threadvec.pop().unwrap().join().unwrap();
+            }
+            life.gen_next();
+            let dbuff = &life.dbuffs.0;
 
             let c = glgfx.draw_begin(args.viewport());
-                render_polygons(&c, &mut glgfx, &mut state, &mut polys, 1.0, Some(dbuff));
+                render_polygons(&c.draw_state, &mut glgfx, &mut state, &mut polys, 1.0, Some(&dbuff));
             glgfx.draw_end();
 
             state.tick().printfps(true); // Increment frame count
         },
-        Event::Input(Input::Resize(ResizeArgs{window_size, draw_size}), _) => {
+        Event::Input( Input::Resize( ResizeArgs{window_size, draw_size} ), _ ) => {
             //println!("\x1b[1;31mEvent::Input::Resize::ResizeArgs {:?} {:?}", window_size, draw_size)
             state.W = window_size[0];
             state.H = window_size[1];
         },
-        Event::Input(Input::Move(Motion::MouseCursor([x, y])), _) => {
+        Event::Input( Input::Move( Motion::MouseCursor( [x, y]) ), _) => {
             //println!("\x1b[1;31mEvent::Input::Move::Motion::MouseCursor {:?} {:?} ", x as usize, y as usize);
             state.mx = (x - state.W/2.0) * 0.01;
             state.my = (y - state.H/2.0) * 0.01;
         },
-        Event::Input(Input::Button(ButtonArgs{state:s, button:Button::Keyboard(k), scancode:_}), _) => {
+        Event::Input( Input::Button( ButtonArgs{state:s, button:Button::Keyboard(k), scancode:_} ), _ ) => {
             //println!("Event::Input::Button == {:?} {:?} {:?}", s, b, c);
             match k {
                 Key::Q => pwin.set_should_close(true),
@@ -671,12 +666,8 @@ fn fun_piston() -> Result<usize, Box<dyn ::std::error::Error>>{
                 Key::Space => { ::util::sleep(500) },
                 _ => ()
             }
-        },
-        Event::Input(i, j)   => { /* println!("\x1b[1;31mEvent::Input {:?} {:?}", i, j) */ },
-        Event::Loop(Loop::Idle(IdleArgs{dt})) => { /* println!("\x1b[0;32mLoop/Idle dt={:?}", dt) */ },
-        Event::Loop(i)       => { /* println!("\x1b[1;32mLoop {:?}", i) */ },
-        Event::Custom(i,j,k) => { /* println!("\x1b[1;34mCustom {:?} {:?} {:?}", i, j, k) */ }
-    }}  // match while
+        }, _ => ()
+    } }  // match while
     Ok(0)
 }
 

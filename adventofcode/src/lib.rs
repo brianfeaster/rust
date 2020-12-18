@@ -1,6 +1,45 @@
+#![allow(non_snake_case)]
 use std::collections::{HashMap, HashSet};
 use regex::Regex;
 use std::fs::{read_to_string};
+use std::fmt::{Debug};
+use util::{Plotter};
+use std::ops::{Index};
+
+////////////////////////////////////////////////////////////////////////////////
+// Useful
+
+fn db<T: Debug> (o: &T) { println!("{:?}", o); }
+
+/// Strings Table
+#[derive (Debug)]
+struct Strings {
+    hm: HashMap<usize, String>
+}
+impl Strings {
+    fn new () -> Strings  {
+        Strings {
+            hm: vec![(std::usize::MAX, "".to_string())]
+                .drain(..).collect()
+        }
+    }
+    //fn put (&mut self, i: usize, s: &str) { self.hm.insert(i, s.to_string()); }
+}
+impl Index<usize> for Strings {
+    type Output = String;
+    fn index(&self, num: usize) -> &Self::Output {
+        self.hm.get(
+            &if self.hm.contains_key(&num) { num } else { std::usize::MAX }
+        ).unwrap()
+    }
+}
+//impl IndexMut<usize> for Strings {
+//    fn index_mut(&mut self, num: usize) -> &mut Self::Output {
+//        self.hm.entry(num).or_insert(String::new())
+//    }
+//}
+
+////////////////////////////////////////////////////////////////////////////////
 
 ////////////////////////////////////////////////////////////////////////////////
 // Day 1
@@ -508,12 +547,12 @@ type B11 = HashMap<(i32,i32),i32>;
 
 fn parse11 (filename: &str) -> B11 {
     read_to_string(filename).unwrap().lines().enumerate()
-    .map(
-        |(y, l)|
+    .map( |(y, l)| {
         l.chars().enumerate()
-        .map(|(x,c)| ((x as i32 ,y as i32 ), match c { '.'=>1, 'L'=>2, '#'=>3, _=>0 } as i32))
-        .collect::<Vec<_>>() )
-    .flatten()
+        .map( |(x,c)| {
+            ((x as i32 ,y as i32 ), match c { '.'=>1, 'L'=>2, '#'=>3, _=>0 } as i32)
+        }).collect::<Vec<_>>()
+    }).flatten()
     .collect::<B11>()
 }
 
@@ -630,44 +669,643 @@ fn day11b (h: &B11) -> i32 {
     }
 }
 
+fn day11c(h: &B11, pltr: &mut Plotter) {
+    pltr.renderhash(&h);
+    let mut counts = counts11(&h);
+    let mut hh = next_gen11a(h);
+    loop {
+        if pltr.renderhash(&hh).iskey('q') { return }
+        let counts2 = counts11(&hh);
+        if counts == counts2 { break } else { counts = counts2 }
+        hh = next_gen11b(&hh);
+    }
+}
+
 fn day11 () {
     ::std::println!("== {}:{} ::{}::day11() ====", std::file!(), core::line!(), core::module_path!());
+
+    let mut pltr = Plotter::new();
+    pltr.color(1,[0.0, 0.0, 0.0, 1.0]).color(2,[0.0, 0.0, 5.0, 1.0]).color(3,[0.5, 0.5, 0.5, 1.0]);
+
     let h :B11 = parse11("data/input11.txt");
     println!("Result 11a: {:?}", day11a(&h)); // 2113
     println!("Result 11b: {:?}", day11b(&h)); // 1865
+    day11c(&h, &mut pltr);
 }
 // Day11 
 ////////////////////////////////////////////////////////////////////////////////
-// Day j
-type Adtj = HashMap<usize,String>;
+// Day 12
+type B12 = Vec<(String,i32)>;
 
-fn parsej (filename: &str) -> Adtj {
-    read_to_string(filename).unwrap()
-    .lines()
-    .enumerate()
-    .map( |(i,e)| {
-         println!("<< {}", e);
-         (i,e.to_string())
+fn parse12 (filename: &str) -> B12 {
+    Regex::new(r"([a-zA-Z]+)(\d+)").unwrap()
+    .captures_iter(&::std::fs::read_to_string(filename).unwrap())
+    .map( |cap| {
+        let dir = cap[1].to_string();
+        let amt = cap[2].parse::<i32>().unwrap();
+        (dir, amt)
     })
-    .collect::<Adtj>()
+    .collect::<B12>()
 }
 
-fn doitja (data: &Adtj) -> usize {
-    data
-    .values()
+fn dirtodeltaadd (dir:i32, delta:i32, x:i32, y:i32) -> (i32, i32) {
+    match dir.rem_euclid(4) {
+        0 => (delta+x, 0+y),
+        1 => (0+x, delta+y),
+        2 => (-delta+x, 0+y),
+        3 => (0+x, -delta+y),
+        _ => (x, y)
+    } 
+}
+
+fn doit12a (data: &B12) -> i32 {
+    let mut pltr = ::util::Plotter::new();
+    let res =
+    data.iter()
+    //.inspect( |(a,d)| print!("{}/{} ", a,d) )
+    .fold( (0,0,0), | (mut d,mut x,mut y), (cmd, delta) | {
+        match &cmd[..] {
+            "R" => d -= match delta { 90=>1, 180=>2, 270=>3, _=>0 },
+            "L" => d += match delta { 90=>1, 180=>2, 270=>3, _=>0 },
+            "F" => { let xy = dirtodeltaadd(d,  *delta, x, y);  x = xy.0;  y = xy.1; },
+            "N" => { let xy = dirtodeltaadd(1,  *delta, x, y);  x = xy.0;  y = xy.1; },
+            "S" => { let xy = dirtodeltaadd(3,  *delta, x, y);  x = xy.0;  y = xy.1; },
+            "E" => { let xy = dirtodeltaadd(0,  *delta, x, y);  x = xy.0;  y = xy.1; },
+            "W" => { let xy = dirtodeltaadd(2,  *delta, x, y);  x = xy.0;  y = xy.1; },
+            _ => ()
+        }
+        pltr.insert(x/10, y/10, 7).render();
+        (d, x, y)
+    });
+    res.1.abs() + res.2.abs()
+}
+
+fn doit12b (data: &B12) -> i32 {
+    let mut pltr = ::util::Plotter::new();
+    let res =
+    data.iter()
+    .fold( (10,1,0,0),
+     | (mut wx, mut wy, mut x,mut y), (cmd, delta) | {
+        match &cmd[..] {
+            "F" => { x+=wx*delta;  y+=wy*delta; },
+
+            "L" => match delta {
+               90 => { let yy=wx; let xx=-wy;  wx=xx; wy=yy; },
+              180 => { wx=-wx;  wy=-wy; },
+              270 => { let yy=-wx; let xx=wy;  wx=xx; wy=yy; },
+              _ => () },
+
+            "R" => match delta {
+               90 => { let yy=-wx; let xx=wy;  wx=xx; wy=yy; },
+              180 => { wx=-wx;  wy=-wy; },
+              270 => { let yy=wx; let xx=-wy;  wx=xx; wy=yy; },
+              _ => () },
+
+            "N" => { wy += delta },
+            "S" => { wy -= delta },
+            "E" => { wx += delta },
+            "W" => { wx -= delta },
+            _ => ()
+        };
+        pltr.insert(x/100, y/100, 7).render();
+        (wx, wy, x, y)
+    } );
+    res.2.abs() + res.3.abs()
+}
+
+
+fn day12 () {
+    ::std::println!("== {}:{} ::{}::day12() ====", std::file!(), core::line!(), core::module_path!());
+    let data = parse12("data/input12.txt");
+    println!("Parse 12a: {:?}", doit12a(&data));
+    println!("Parse 12b: {:?}", doit12b(&data));
+    //println!("Result Jb: {:?}", parse12("data/input12.txt"));
+}
+// Day 12
+////////////////////////////////////////////////////////////////////////////////
+// Day 13
+type B13 = (i32, Vec<i32>);
+
+fn parse13 (filename: &str) -> B13 {
+    let lines =
+        read_to_string(filename)
+        .unwrap_or_else( |err| {println!("{:?}", err); err.to_string()})
+        .lines()
+        .map( |l| l.to_string() )
+        .collect::<Vec<String>>();
+
+    (   lines[0].parse::<i32>().unwrap()
+     ,
+        lines[1].split(",")
+        .filter_map( |e| e.parse::<i32>().ok() )
+        .collect::<Vec::<i32>>() )
+}
+
+fn doit13a (data: &B13) -> i32 {
+    let (t0, bs) = data;
+    bs.iter()
+    .map( |b| vec!(*b, *b - (t0 % *b) ) )  // bus# and  remaining time until arrival
+    .min_by( |x,y| x[1].cmp(&y[1]) )
+    .unwrap().iter().product()
+} // 863 * 5 = 4315
+
+type B13b = Vec<(usize,u64)>;
+
+fn parse13b (filename: &str) -> B13b {
+        read_to_string(filename)
+        .unwrap_or_else( |err| {println!("{:?}", err); err.to_string()})
+        .lines()
+        .map( |l| l.to_string() )
+        .collect::<Vec<String>>()
+        [1]
+        .split(",")
+        .map( |e| e.parse::<u64>().unwrap_or(1) )
+        .enumerate()
+        .filter( |(_i,e)| 1 < *e)
+        .collect::<B13b>()
+}
+
+fn doit13b (data: &[(usize,u64)]) -> u64 {
+    let mut busprod :u64 = 1;
+    let mut time :u64 = 0;
+    for p in data.iter() { // p.0 = pus index  p.1 = bus number
+        while ((time + p.0 as u64) % p.1) != 0 { time += busprod; }  // Increment time until current bus "arrives"
+        busprod *= p.1; // increment is product of previous bus numbers
+    }
+    time
+} // 556100168221141
+
+fn day13 () {
+    ::std::println!("== {}:{} ::{}::day13() ====", std::file!(), core::line!(), core::module_path!());
+    let data = parse13("data/input13.txt");
+    println!("Result 13a: {:?}", doit13a(&data));
+    let data = parse13b("data/input13.txt");
+    println!("Result 13b: {:?}", &doit13b(&data));
+}
+// Day 13
+////////////////////////////////////////////////////////////////////////////////
+// Day 14
+
+fn parse14a (filename: &str) -> u64 {
+    let mut andmask :u64 = 0;
+    let mut ormask :u64 = 0;
+    let mut sum :HashMap<u64, u64> = HashMap::new();
+    Regex::new(r"(mask|mem\[(\d+)\]) = (.*)").unwrap()
+    .captures_iter(&::std::fs::read_to_string(filename).unwrap())
+    .map( |cap| 
+        if cap.get(2).is_none() {
+            andmask = u64::from_str_radix(&cap[3].replace("X", "1"), 2).unwrap();   // and mask
+            ormask = u64::from_str_radix(&cap[3].replace("X", "0"), 2).unwrap();  // or mask
+            (0, 0)
+        } else {
+          let addr = cap[2].parse::<u64>().unwrap();
+          let val =  cap[3].parse::<u64>().unwrap();
+          let newval = (val | ormask) & andmask;
+          sum.insert(addr, newval);
+          (0, 0)
+        }
+    ).count();
+    sum.iter().fold( 0, |r, (_k,v)| r + v)
+} // 17481577045893
+
+fn addresses (pat: &str) -> Vec<u64> {
+    let nbits = pat.matches('X').count() as u32;
+    (0 .. (2 as u64).pow(nbits)).map( |n| {
+        let mut ns = pat.to_string().replace("1", "0");
+        for b in 0 .. nbits {
+             ns = ns.replacen("X", if n & (1<<b) != 0 { &"1" } else { &"0" }, 1);
+        }
+        let ret = u64::from_str_radix(&ns, 2).unwrap();
+        ret
+    }).collect::<Vec<u64>>()
+}
+
+fn parse14b (filename: &str) -> u64 {
+    let mut xmask :String = "".to_string();
+    let mut ormask :u64 = 0;
+    let mut andmask :u64 = 0;
+    let mut sum :HashMap<u64, u64> = HashMap::new();
+    Regex::new(r"(mask|mem\[(\d+)\]) = (.*)").unwrap()
+    .captures_iter(&::std::fs::read_to_string(filename).unwrap())
+    .map( |cap| 
+        if cap.get(2).is_none() {
+            xmask = cap[3].to_string();   // X mask
+            ormask = u64::from_str_radix(&cap[3].replace("X", "0"), 2).unwrap();  // or mask
+            andmask = u64::from_str_radix(&cap[3].replace("0", "1").replace("X", "0"), 2).unwrap();
+            (0, 0)
+        } else {
+          let addy = cap[2].parse::<u64>().unwrap();
+          let val =  cap[3].parse::<u64>().unwrap();
+          for mask in addresses(&xmask) {
+              let addr2 = ((addy | ormask) & andmask) | mask;
+             sum.insert( addr2, val);
+          }
+          (0, 0)
+        }
+    ).count();
+    sum.iter().fold( 0, |r, (_k,v)| r + v)
+} // 4160009892257
+
+fn day14 () {
+    ::std::println!("== {}:{} ::{}::day14() ====", std::file!(), core::line!(), core::module_path!());
+    let data = parse14a("data/input14.txt");
+    println!("Result 14a: {:?}", data);
+    let data = parse14b("data/input14.txt");
+    println!("Result 14b: {:?}", data);
+}
+// Day 14
+////////////////////////////////////////////////////////////////////////////////
+// Day 15
+
+fn doit15a (data: &[usize], loopmax: usize) -> (usize, usize) {
+    let mut h: HashMap<usize, usize> // <num, lastIdx>
+        = HashMap::new();
+    let mut last = (data[0], 0);
+
+    for i in 1..data.len() {
+         h.insert(last.0, last.1);
+         last=(data[i], i);
+    }
+    for i in data.len()..loopmax {
+        let lst = last;
+        if let Some(prev) = h.get(&last.0) { // Seen before, so new lastnum is difference in distance
+            last = (last.1-prev, i);
+        } else {// First time lastnum seen, so put 0
+            last = (0, i);
+        }
+        h.insert(lst.0, lst.1);
+    }
+    last
+} // 763 1876406
+
+fn day15 () {
+    let mut d = util::delta();
+    ::std::println!("== {}:{} ::{}::day15() ====", std::file!(), core::line!(), core::module_path!());
+    println!("Result 15a: {:?}", doit15a(&[0,14,1,3,7,9], 2_0_20));
+    d();
+    println!("Result 15b: {:?}", doit15a(&[0,14,1,3,7,9], 30_000_000)); // 30000000
+    d();
+} // 763 1876406
+// Day 15
+////////////////////////////////////////////////////////////////////////////////
+// Day 16
+
+fn parse16a (file: &str) -> HashMap::<usize, HashSet<String>> {
+    let mut h = HashMap::new(); // New empty HashMap
+    for line in file.lines() { // Over all field names and valid ranges lines...
+      let cap = Regex::new(r"([^:]+): (.*)-(.*) (.*)-(.*)").unwrap().captures(line).unwrap();
+      for j in cap[2].parse::<usize>().unwrap() ..= cap[3].parse::<usize>().unwrap() {
+            h.entry(j).or_insert(HashSet::new()).insert(cap[1].to_string());
+      }
+      for j in cap[4].parse::<usize>().unwrap() ..= cap[5].parse::<usize>().unwrap() {
+            h.entry(j).or_insert(HashSet::new()).insert(cap[1].to_string());
+      }
+    }
+    //h.iter().inspect( |(i,e)| println!("\n\n{}\n{:?}", i, e) ).count();
+    h
+}
+
+fn doit16a (h: &HashMap::<usize, HashSet<String>>, file: &str) -> usize {
+    let mut v = vec!();
+    for line in file.lines() {
+        line.split(",").enumerate().for_each( |(_i,n)| {
+            let num = n.parse::<usize>().unwrap();
+            if h.get(&num).is_none() {
+                v.push(num);
+            }
+        })
+    }
+    v.iter().sum()
+} // 27802
+
+fn doit16b (h: &HashMap::<usize, HashSet<String>>, file: &str) -> usize {
+    let tickets =  // Read the vector of vector of numbers
+    file.lines()
+    .map( |line| line.split(",").map( |e| e.parse::<usize>().unwrap()).collect::<Vec<usize>>() ) // vec of ticket fields
+    .filter( |v| v.iter().all( |n| h.get(&n).is_some() ) )
+    .collect::<Vec<_>>();
+
+    // Vector of tickets of hashmaps... each hash set contains possible field names
+    let mut newtickets :Vec<Vec<HashSet<String>>> = vec!();
+    for ticket in &tickets { // over all Vec<Vec<usize>>
+        let mut newticket :Vec<HashSet<String>> = vec!(); // Create empty new Vec<HashSet<usize>>
+        for num in ticket {  // for each Vec<usize>
+            newticket.push(h.get(&num).unwrap().clone()); // push HashSet<usze> onto Vec<Hashset<usize>>
+        }
+        newtickets.push(newticket);
+    }
+
+    // Initial vector of hashsets to intersect with each ticket's hashmap...in
+    // the end should have a vector of hashmaps continaing just one string (the
+    // field naem for that field index)
+    let mut finalfields :Vec<HashSet<String>> = vec!();
+    for i in 0..20 {
+        finalfields.push(newtickets[0][i].clone()) // push HashSet<usize> onto Vec<HashSet<usize>>
+    }
+
+    // Intersect all the columns into a vector of sets of possible field names.  The ones
+    // with a single field name identify that field name.  Must continue to filter ...
+    for f in 0..20 {
+        for ticket in newtickets.iter() {
+            finalfields[f].retain( |e| ticket[f].contains(e))
+        }
+    }
+
+    let mut sum = 1;
+    let myfields = vec![79,67,101,89,131,107,139,113,127,83,137,53,71,149,73,97,59,61,109,103];
+    // Continuously identify the single field row, then remove it from all the others since it
+    // is the only field that can be that field.
+    loop {
+        let single = finalfields.iter().find( |e| e.len() == 1 );
+        if single.is_none() { break }
+        let single = single.unwrap().iter().nth(0).unwrap().to_string();
+        for idx in 0..20 {
+            if finalfields[idx].len() == 1 && single.contains("departure") {
+               sum *= myfields[idx];
+            }
+            finalfields[idx].retain( |e| *e != single);
+        }
+    }
+    sum
+} // 279139880759
+
+
+fn day16 () {
+    ::std::println!("== {}:{} ::{}::day16() ====", std::file!(), core::line!(), core::module_path!());
+    let file = read_to_string("data/input16a.txt").unwrap();
+    let data = parse16a(&file);
+    let file = read_to_string("data/input16b.txt").unwrap();
+    println!("Result 16a: {:?}", doit16a(&data, &file));
+    println!("Result 16b: {:?}", doit16b(&data, &file));
+}
+// Day 16
+////////////////////////////////////////////////////////////////////////////////
+// Day 17
+type B17 = HashMap<(i32, i32, i32), usize>; // Let's do {location: [neighbord count|alive] }
+
+fn parse17 (file: &str) -> B17 {
+    let mut hs = B17::new();
+    for (y,l) in file.lines().enumerate() {
+        for (x,c) in l.chars().enumerate() {
+            if c == '#' { hs.insert((x as i32,y as i32,0i32), 1); }
+        }
+
+    }
+    hs
+}
+
+// Increment all my neighbors' counts
+fn neighborsInc (s:&mut B17, (m,n,o):&(i32,i32,i32)) {
+    for x in -1..=1 {
+        for y in -1..=1 {
+            for z in -1..=1 {
+                if x==0 && y==0 && z== 0 { continue }
+                // Might have to create a new empty spot
+                *s.entry((m+x,n+y,o+z)).or_insert(0) += 2; // Increment count for alive or dead spot
+            }
+        }
+    }
+}
+
+fn doit17a (s: &mut B17) -> B17 {
+    let mut snew = B17::new();
+    let mut locs :Vec<(i32,i32,i32)> = vec!();
+    for (l,_v) in s.iter() { // Consider every alive location
+        locs.push((l.0, l.1, l.2)); 
+    }
+    for l in locs {         // And increment all my neighbors
+        neighborsInc(s, &l);
+    }
+
+    for (l,v) in s { // Consider every touched location
+         // Maybe carry life over
+         if (3 == *v>>1) || ((1 == (*v & 1)) && (2 == *v>>1)) {
+            snew.insert(*l, 1);
+         } 
+    }
+    snew
+}
+
+type B17b = HashMap<(i32, i32, i32, i32), usize>; // Let's do {location: [neighbord count|alive] }
+
+fn parse17b (file: &str) -> B17b {
+    let mut hs = B17b::new();
+    for (y,l) in file.lines().enumerate() {
+        for (x,c) in l.chars().enumerate() {
+            if c == '#' { hs.insert((x as i32,y as i32, 0i32, 0i32), 1); }
+        }
+
+    }
+    hs
+}
+fn neighborsInc17b (s:&mut B17b, (m,n,o,p):&(i32,i32,i32,i32)) {
+    for w in -1..=1 {
+    for x in -1..=1 {
+        for y in -1..=1 {
+            for z in -1..=1 {
+                if x==0 && y==0 && z== 0 && w==0{ continue }
+                // Might have to create a new empty spot
+                *s.entry((m+x,n+y,o+z,p+w)).or_insert(0) += 2; // Increment count for alive or dead spot
+            }
+        }
+    }
+    }
+}
+fn doit17b (s: &mut B17b) -> B17b {
+    let mut snew = B17b::new();
+    let mut locs :Vec<(i32,i32,i32,i32)> = vec!();
+    for (l,_v) in s.iter() { // Consider every alive location
+        locs.push((l.0, l.1, l.2, l.3)); 
+    }
+    for l in locs {         // And increment all my neighbors
+        neighborsInc17b(s, &l);
+    }
+
+    for (l,v) in s { // Consider every touched location
+         // Maybe carry life over
+         if (6 == ((*v) & 254)) || (5 == ((*v) & 255)) {
+         //if (3 == *v>>1) || ((1 == (*v & 1)) && (2 == *v>>1)) {
+            snew.insert(*l, 1);
+         } 
+    }
+    snew
+}
+
+fn day17 () {
+    ::std::println!("== {}:{} ::{}::day17() ====", std::file!(), core::line!(), core::module_path!());
+    let file = read_to_string("data/input17.txt").unwrap();
+    let mut s = parse17(&file);
+    for _ in 1..=6 { s = doit17a(&mut s); }
+    println!("Result 17a: {:?}", s.len()); // 375
+
+    let file = read_to_string("data/input17.txt").unwrap();
+    let mut s = parse17b(&file);
+    //println!("{} |{}|", 0, s.len());
+    for _ in 1..=6 {
+         s = doit17b(&mut s);
+         //println!("{} |{}|", l, s.len());
+    }
+    println!("Result 17b: {:?}", s.len()); // 2192
+}
+// Day 17
+////////////////////////////////////////////////////////////////////////////////
+// Day 18
+
+fn solve18a (mut v: &[char]) -> (usize, &[char]) {
+    let mut nums = vec!();
+    let mut ops  = vec!();
+    loop {
+        //println!("{:?}  \x1b[33m{:?}\x1b[0m  {:?}", v, nums, ops);
+        let c = v[0];
+        v = &v[1..];
+        match c {
+            '*'|'+' => ops.push(c),
+            '0'|'1'|'2'|'3'|'4'|'5'|'6'|'7'|'8'|'9'|'(' =>  {
+                let mut num :usize;
+                if c == '(' {
+                    let ret = solve18a(v);
+                    num = ret.0;
+                    v = ret.1;
+                } else {
+                    num = c.to_string().parse::<usize>().unwrap();
+                }
+                match ops.pop() {
+                    Some('*') => { num *= nums.pop().unwrap(); },
+                    Some('+') => { num += nums.pop().unwrap(); },
+                    _ => ()
+                }
+                nums.push(num);
+            },
+            _ => ()
+        }
+        if c==')' || v.is_empty() { break }
+    } // loop
+    (nums.pop().unwrap(), v)
+} // 510009915468
+
+fn solve18b (mut v: &[char]) -> (usize, &[char]) {
+    let mut nums = vec!();
+    let mut ops  = vec!();
+    loop {
+        //println!("{:?}  \x1b[33m{:?}\x1b[0m  {:?}", v, nums, ops);
+        let c = v[0];
+        v = &v[1..];
+        match c {
+            '*'|'+' => ops.push(c),
+            '0'|'1'|'2'|'3'|'4'|'5'|'6'|'7'|'8'|'9'|'(' =>  {
+                let mut num :usize;
+                if c == '(' {
+                    let ret = solve18b(v);
+                    num = ret.0;
+                    v = ret.1;
+                } else {
+                    num = c.to_string().parse::<usize>().unwrap();
+                }
+                if let Some('+') = ops.last() {
+                    ops.pop(); num += nums.pop().unwrap();
+                }
+                nums.push(num);
+            },
+            _ => ()
+        }
+        if c==')' || v.is_empty() { break }
+    } // loop
+    let mut num = nums.pop().unwrap();
+    while let Some('*') = ops.last() {
+        ops.pop();
+        num *= nums.pop().unwrap();
+    }
+    (num, v)
+} // 321176691637769
+
+type B18 = Vec<Vec<char>>;
+fn parse18 (file: &str) -> B18 {
+    file
+    .lines()
+    .map( |line| line.chars().collect::<Vec<char>>())
+    .collect::<B18>()
+}
+
+fn doit18a (data: &B18) -> usize { data.iter().map( |v| solve18a(&v).0 ).sum() }
+fn doit18b (data: &B18) -> usize { data.iter().map( |v| solve18b(&v).0 ).sum() }
+
+fn day18 () {
+    ::std::println!("== {}:{} ::{}::day18() ====", std::file!(), core::line!(), core::module_path!());
+    let file = read_to_string("data/input18.txt").unwrap();
+    let data = parse18(&file);
+    println!("Result 18a: {:?} 510009915468", doit18a(&data));
+    println!("Result 18b: {:?} 321176691637769", doit18b(&data));
+}
+// Day 18
+////////////////////////////////////////////////////////////////////////////////
+// Day 99
+type B99 = HashMap<usize,String>;
+
+fn parse99 (file: &str) -> B99 {
+    Regex::new(r"(\w?) (.*)").unwrap().captures_iter( &file  )
+    .inspect( |l| println!("| {:?}", l) )
+    .filter( |cap| &cap[1] != "" ) // all newlines become an empty capture for some reason
+    .map( |cap| {
+        let line = cap[1].to_string();
+        line
+    })
     .enumerate()
-    .map( |(i,e)| (e, data.values().take(i+1).collect::<Vec<_>>()))
-    .inspect( |e| println!("{:?}", e))
+    .collect::<B99>()
+}
+
+fn doit99a (data: &B99) -> usize {
+    data.iter()
+    .inspect( |l| { println!("<< {:?}", l) } )
     .count()
 }
 
-fn dayj () {
-    ::std::println!("== {}:{} ::{}::dayj() ====", std::file!(), core::line!(), core::module_path!());
-    let data = parsej("data/inputj.txt");
-    println!("Result ja: {:?}", doitja(&data));
-    //println!("Result Jb: {:?}", parsej("data/inputj.txt"));
+fn day99 () {
+    ::std::println!("== {}:{} ::{}::day99() ====", std::file!(), core::line!(), core::module_path!());
+    let file = read_to_string("data/input99.txt").unwrap();
+    let data = parse99(&file);
+    println!("Result 99a: {:?}", doit99a(&data));
+    //println!("Result 99b: {:?}", doit99b(&data));
 }
-// Day j
+// Day 99
+////////////////////////////////////////////////////////////////////////////////
+// Day 98
+
+type B98 = HashMap<usize,String>;
+
+fn parse98 (file: &str)  -> B98{
+    //let mut st = Strings::new();
+
+    file
+    .lines()
+    .map( |line|
+         Regex::new(r"\n?([^:]+): (\d+)-(\d+) or (\d+)-(\d+)").unwrap().captures(line)
+    ).filter_map( |e| e )
+    .map( move |cap| (1 .. cap.len()).map( |i| cap[i].to_string() ).collect::<Vec<String>>() )
+    .inspect(db)
+    //.filter( |cap| &cap[1] != "" ) // all newlines become an empty capture for some reason
+    //.map( |cap| {
+    //    let line = cap[0].to_string();
+    //    line
+    //})
+    .count();
+    B98::new()
+}
+
+fn doit98a (data: &B98) -> usize {
+    data.iter()
+    .inspect( db )
+    .count()
+}
+
+fn day98 () {
+    ::std::println!("== {}:{} ::{}::day98() ====", std::file!(), core::line!(), core::module_path!());
+    let s = Strings::new();
+    let file = read_to_string("data/input98.txt").unwrap();
+    let data = parse98(&file);
+    println!("Result 98a: {:?} {:?}", s, doit98a(&data));
+    //println!("Result 98b: {:?}", doit98b(&data));
+}
+// Day 98
 ////////////////////////////////////////////////////////////////////////////////
 // Main
 
@@ -712,8 +1350,31 @@ pub fn main() {
     day11();
     // Result 11a: 2113
     // Result 11b: 1865
+    day12();
+    // Parse 12a: 1133
+    // Parse 12b: 61053
+    day13();
+    // Result 13a: 4315
+    // Result 13b: 556100168221141
+    day14();
+    // 17481577045893
+    // 4160009892257
+    day15();
+    // Result 15a: 763
+    // Result 15a: 1876406
+    day16();
+    // 27802
+    // 279139880759
+    day17();
+    // Result 17a: 375
+    // Result 17b: 2192
+    day18();
+    // Result 18a: 510009915468
+    // Result 18b: 321176691637769
+    day99();
     }
-    dayj();
+    day98();
+
 }
 
 // Main

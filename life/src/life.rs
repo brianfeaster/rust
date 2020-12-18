@@ -1,9 +1,11 @@
-#![allow(dead_code, unused_assignments, unused_imports, unused_variables, non_snake_case)]
+//#![allow(dead_code, unused_assignments, unused_imports, unused_variables, non_snake_case)]
+#![allow(non_snake_case)]
 use ::std::sync::{Arc, Mutex};
 use ::std::thread::{spawn, JoinHandle};
-use ::std::time::{SystemTime};
+//use ::std::time::{SystemTime};
 use ::std::ops::{Range};
 use ::piston_window::*;
+use ::util::{Watch};
 
 /// Game of life
 
@@ -31,17 +33,6 @@ fn draw_glider (aa :& Arena, x :usize, y :usize) {
     aa[y+1].lock().unwrap()[x+0] = 1;
 }
 
-/// Copy arena to double buffer
-fn arena_render (
-    aa :&Arena,
-    dd :&mut crate::dbuff::Dbuff
-) {
-    dd.tick(); // Tick the double buffer
-    for y in (0..aa.len()).rev() {
-        dd.put(&aa[y].lock().unwrap());
-    }
-}
-
 fn arena_clear (bb :&Arena, w :usize, h :usize) {
     for y in 0..h {
         let mut row = bb[y].lock().unwrap();
@@ -65,7 +56,7 @@ fn genNewRow (
         rc :& Vec<i32>,
         bb :&mut Vec<i32>) {
     // Sum of columns window
-    let mut a = 0; // Not set initially
+    let mut a; // Not set initially
     let mut b = ra[w-1] + rb[w-1] + rc[w-1]; // Last column of game field
     let mut c = ra[0]   + rb[0]   + rc[0];   // First column of game field
     let firstCol = c;
@@ -86,46 +77,38 @@ fn genNewRow (
     }
 }
 
-
-fn genNewRows (
+fn spwnGenNextRows (
         aa      :&Arena,
         bb      :&Arena,
         range   :Range<usize>,
         w       :usize,
-        h       :usize,
-        threads :&mut Vec<JoinHandle<()>>,
-        spins   :&Arc<Mutex<usize>>) {
+        h       :usize
+) -> JoinHandle<()> {
     let aa = aa.clone();
     let bb = bb.clone();
-    //let spin = spins.clone();
-    let a = range.start;
-    let b = range.end;
-    threads.push(spawn( move || {
-        //println!("genNewRows:: {:?} {:?}", a, b);
+    spawn( move || {
+        //println!("spwnGenNextRows:: {:?} {:?}", range.start, range.end);
+        //let (ra, rb) = (range.start, range.end);
         for i in range { // Over the rows...
             loop { // Lock the four rows and generate new row or retry...
                 let ral = aa[(i+h-1) % h].try_lock();
                 if ral.is_err() {
-                    //println!("a{:?} {} ", a..b-1, (i+h-1 % h) as i32);
-                    //*spin.lock().unwrap() += 1;
+                    //println!("a{:?} {} ", ra..rb-1, (i+h-1 % h) as i32);
                     continue
                 }
                 let rbl = aa[i].try_lock();
                 if rbl.is_err() {
-                    //println!("b{:?} {} ", a..b-1, i);
-                    //*spin.lock().unwrap() += 1;
+                    //println!("b{:?} {} ", ra..rb-1, i);
                     continue
                 }
                 let rcl = aa[(i+1) % h].try_lock();
                 if rcl.is_err() {
-                    //println!("c{:?} {} ", a..b-1, i+1%h);
-                    //*spin.lock().unwrap() += 1;
+                    //println!("c{:?} {} ", ra..rb-1, i+1%h);
                     continue
                 }
                 let bbl = bb[i].try_lock();
                 if bbl.is_err() {
                     //println!("cbb {} ", i);
-                    //*spin.lock().unwrap() += 1;
                     continue
                 }
                 genNewRow(w,
@@ -136,144 +119,124 @@ fn genNewRows (
                 break;
             }
         }
-    }));
+    })
 }
 
 
 // Life ////////////////////////////////////////////////////////////////////////
 
 pub struct Life {
-    whs:    (usize, usize, usize),
+    whs:    (usize, usize, usize), // width height size
     arenas: (Arena, Arena), // Nested mutable ADTs that can be passed to threads
-    dbuffs: (crate::dbuff::Dbuff, crate::dbuff::Dbuff),// Piston is 2xbuffered so we need a dbuff for each
+    pub dbuffs: (crate::dbuff::Dbuff, crate::dbuff::Dbuff),// Piston is 2xbuffered so we need a dbuff for each
+    pub dbuff_en: bool,
     pub tick: usize,
-    state: bool,
     randomize: bool, // Randomizes field on next generation
     clear: bool,
-    threads: usize,
-    delta: usize,
+    threads: usize, // How many threads to spanw for each generation computation
+    pub threadvec :Vec<JoinHandle<()>>,
 }
 
-impl Life { pub fn new (w: usize, h: usize) -> Life {
+impl Life {
+pub fn new (w: usize, h: usize) -> Life {
     Life {
         whs: (w, h, w*h),
         arenas: ( arena_new(w, h), arena_new(w, h) ),
         dbuffs: (
             crate::dbuff::Dbuff::new(w*h),
             crate::dbuff::Dbuff::new(w*h) ),
+        dbuff_en: true,
         tick: 0,
-        state: false,
         randomize: false,
         clear: false,
         threads: 1,
-        delta: 0
+        threadvec: vec!()
     }
 } }
 
 impl Life {
     pub fn tick (&mut self) -> &mut Self {
         self.tick += 1;
-        self.state = !self.state;
         self
     }
     pub fn randomize (&mut self) -> &mut Self { self.randomize=true; self }
     pub fn clear (&mut self) -> &mut Self { self.clear=true; self }
     pub fn add_glider (&self, x: usize, y: usize) -> &Self {
-        match self.state {
+        match self.state() {
             false => draw_glider(&self.arenas.0, x, y),
             true  => draw_glider(&self.arenas.1, x, y)
         }
         self
     }
-    pub fn render_dbuff (&mut self) -> &crate::dbuff::Dbuff {
-        let aa = match self.state {
+    // Which arena generation state?
+    //   False: Arena 0->1
+    //   True:  Arena 1->0
+    pub fn state (&self) -> bool { 1 == self.tick & 1 }
+
+    pub fn gen_next (&mut self) -> &mut Self {
+        let (aa, bb) = // aa is the current arena (to read), bb the next arena (to overwrite)
+            match self.state() {
+                false => (&self.arenas.0, &self.arenas.1),
+                true  => (&self.arenas.1, &self.arenas.0)
+            };
+        if self.randomize {
+            self.randomize = false;
+            arena_randomize(bb, self.whs.0, self.whs.1);
+        } else if self.clear {
+            self.clear = false;
+            arena_clear(bb, self.whs.0, self.whs.1);
+        } else {
+            let (w, h,_) = self.whs;
+            for p in 0 .. self.threads {
+                let range = h*p/self.threads .. h*(p+1)/self.threads;
+                let t =
+                spwnGenNextRows(aa, bb, range, w, h);
+                self.threadvec.push(t);
+            }
+        }
+        self
+    }
+
+    pub fn dbuff (&mut self) -> &mut crate::dbuff::Dbuff {
+        match self.dbuff_en && self.state() {
+            false => &mut self.dbuffs.0,
+            true  => &mut self.dbuffs.1
+        } 
+    }
+    
+    pub fn arena_xfer_dbuff (&mut self) -> &mut Self {
+        let aa = match self.state() { // aa is the current arena to read/render from
             false => &self.arenas.0,
             true  => &self.arenas.1
         };
-        arena_render(aa, &mut self.dbuffs.0); // Copy to delta frame buffer
-        self.tick();
-        &self.dbuffs.0
-    }
-}
-
-impl Life {
-pub fn gen_next (&mut self) -> &mut Self {
-    let (aa, bb) = // aa is the current arena (to read/dump), bb the next arena (to generate/overwrite)
-        match self.state {
-            false => (&self.arenas.0, &self.arenas.1),
-            true  => (&self.arenas.1, &self.arenas.0)
-        };
-
-    let spins = Arc::new(Mutex::new(0)); // Keep track of mutex spins TODO
-
-    if self.randomize {
-        self.randomize = false;
-        arena_randomize(bb, self.whs.0, self.whs.1);
-    } else if self.clear {
-        self.clear = false;
-        arena_clear(bb, self.whs.0, self.whs.1);
-    } else {
-        // Spawn the threads to generate the next generation
-        let mut threads :Vec<JoinHandle<()>> = vec!();
-        let (w, h,_) = self.whs;
-        for p in 0 .. self.threads {
-            let range = h*p/self.threads .. h*(p+1)/self.threads;
-            //print!("{:?} ", range);
-            genNewRows(aa, bb, range, w, h, &mut threads, &spins);
+        let dd = match self.dbuff_en && self.state() {
+            false => &mut self.dbuffs.0,
+            true  => &mut self.dbuffs.1
+        }; 
+        dd.tick(); // Tick double buffer, clears next active buffer
+        // Copy arena to double buffer
+        for y in (0..aa.len()).rev() { // Reverse the indexing so as to only conflict with the nexst generation thread once in the vector.
+            //dd.put(&aa[y].lock().unwrap());
+            loop { match aa[y].try_lock() { // Spin lock acquire
+                  Err(_) => continue,
+                  Ok(t) => { dd.put(&t); break }
+            } }
         }
-        //println!("");
-        // Wait for threads to finish
-        for t in 0..threads.len() { 
-            //println!("Waiting on thread {}", t);
-            threads.pop().unwrap().join().unwrap();
-        }
+        self
     }
-    self
-}
+
 }
 
-impl Life {
-pub fn render (
-    &mut self,
-    pwin:  &mut PistonWindow,
-    event: Event,
-    cellsize: f64
-) -> &Self {
-    let (aa, dd) = // aa is the current arena to render/read/dump
-        match self.state {
-            false => (&self.arenas.0, &mut self.dbuffs.0),
-            true  => (&self.arenas.1, &mut self.dbuffs.1)
-        };
-    arena_render(aa, dd); // Copy to delta frame buffer
-    let mut delta :usize = 0; // Count number of changes from last aren
-    let (w, h, _) = self.whs;
-    pwin.draw_2d(
-        &event,
-        |context:  piston_window::Context,
-            graphics: &mut piston_window::G2d,
-            _device:  &mut piston_window::GfxDevice
-        | { dumpPiston(dd, &mut delta, w, h, context, graphics, cellsize); }
-    );
-    self.tick(); // Tick myself
-    self.delta = delta;
-    self
-}
-}
-
-pub fn dumpPiston (
-    this: &crate::dbuff::Dbuff,
-    writes: &mut usize,
+pub fn piston_draw_2d_callback (
+    dbuff: &crate::dbuff::Dbuff,
+    deltas: &mut usize,
     width: usize,
     height: usize,
     context  :piston_window::Context,
     graphics :&mut G2d,
     cellsize: f64
 ) {
-    let (ba, bb) = 
-        match this.tick & 1 {
-            0 => (&this.buffa, &this.buffb),
-            _ => (&this.buffb, &this.buffa)
-        };
+    let (ba, bb) = dbuff.buffs();
     let mut col :usize = 0;
     let mut row :usize = 0;
     //clear([0.0, 0.0, 0.0, 1.0], graphics);
@@ -297,7 +260,7 @@ pub fn dumpPiston (
     let xform = context.transform;
     for i in 0..width*height {
         if ba[i] != bb[i] {
-            *writes += 1;
+            *deltas += 1;
             poly[0] = col as f64 * cellsize;
             poly[1] = row as f64 * cellsize;
             poly[2] = cellsize;
@@ -309,7 +272,7 @@ pub fn dumpPiston (
             }
         }
         col += 1;
-        if col == width { col = 0; row += 1; } 
+        if col == width { col = 0; row += 1; }
     }
     if false {
     Rectangle{
@@ -327,17 +290,37 @@ pub fn dumpPiston (
         graphics);
     }
     //rectangle( [ 1.0, 0.0, 0.0, 1.0 ], [ 50.0, 50.0, 50.0, 50.0 ], context.transform, graphics);
-} // fn dumpPiston
+} // fn piston_draw_2d_callback
+
+pub fn piston_render (
+    life: &mut Life,
+    //dbuff: &crate::dbuff::Dbuff,
+    pwin: &mut PistonWindow,
+    event: Event,
+    cellsize: f64
+) -> usize {
+    let w = life.whs.0;
+    let h = life.whs.1;
+    let dbuff = life.dbuff();
+    let mut deltas :usize = 0; // Count number of changes from last aren
+    pwin.draw_2d(
+        &event,
+        |context:  piston_window::Context,
+            graphics: &mut piston_window::G2d,
+            _device:  &mut piston_window::GfxDevice
+        | { piston_draw_2d_callback(dbuff, &mut deltas, w, h, context, graphics, cellsize); }
+    );
+    deltas
+}
 
 
 ////////////////////////////////////////////////////////////////////////////////
 
-fn mainLife1 (w: usize, h: usize, cellsize: usize) {
+fn main_life_2d (w: usize, h: usize, cellsize: usize) -> bool {
     let mut life :Life = Life::new(w, h);
-    let cellsize = 5;
+    let mut deltas :usize = 0;
     let winSize = (life.whs.0*cellsize, life.whs.1*cellsize);
-    let mut epoch :SystemTime = SystemTime::now(); // For FPS calculation
-    let mut frameCount = 0;
+    let mut watch = Watch::new();
     let mut pwin: PistonWindow =
         WindowSettings::new("ASCIIRhOIDS", [winSize.0 as u32, winSize.1 as u32])
             //.exit_on_esc(true)
@@ -345,7 +328,7 @@ fn mainLife1 (w: usize, h: usize, cellsize: usize) {
             .decorated(true)
             .build()
             .unwrap();
-    pwin.set_max_fps(120);
+    pwin.set_max_fps(1000);
 
         /* Ghetto dump arena
         for y in 0..24 {
@@ -358,14 +341,14 @@ fn mainLife1 (w: usize, h: usize, cellsize: usize) {
         print!("\x1b[H");
         */
 
-    //::util::sleep(1 * 1000);
-    //println!("{:?}", event);
 
+    //let mut d = ::util::delta();
+    life.gen_next();
     while let Some(event) = pwin.next() {
         match event { // events.next(&mut pwin)
-        Event::Loop(Loop::Idle(IdleArgs{dt})) => { },
-        Event::Input(Input::Resize(ResizeArgs{window_size, draw_size}), _) => { },
-        Event::Input(Input::Button(ButtonArgs{state:s, button:Button::Keyboard(k), scancode:_}), _) => {
+        Event::Loop(Loop::Idle(IdleArgs{dt:_})) => { },
+        Event::Input(Input::Resize(ResizeArgs{window_size:_, draw_size:_}), _) => { },
+        Event::Input(Input::Button(ButtonArgs{state:_, button:Button::Keyboard(k), scancode:_}), _) => {
             match k {
                 Key::Space  => { life.randomize(); },
                 Key::C      => { life.clear(); },
@@ -374,57 +357,77 @@ fn mainLife1 (w: usize, h: usize, cellsize: usize) {
                 _ => ()
             }
         },
-        Event::Loop(Loop::Render(args)) => {
-            //println!("{:?}", args);
-            //life.randomize();
+        Event::Loop(Loop::Render(_args)) => {
+            life.arena_xfer_dbuff();
+            // Wait for threads to finish
+            print!("{} ", life.threadvec.len());
+            for _ in 0..life.threadvec.len() { 
+                print!(". ");
+                life.threadvec.pop().unwrap().join().unwrap();
+            }
+            //println!("{:?}", d());
+            deltas = piston_render(&mut life, &mut pwin, event, cellsize as f64);
+            //d();
+            life.tick();
+            watch.tick();
             life.gen_next();
-            life.render(&mut pwin, event, cellsize as f64);
-            frameCount += 1;
         },
         _ => () } // match
-        if 0 == life.tick % 50 { life.add_glider(10, 10); } // Draw a glider periodically
-        if 50000 < life.tick { pwin.set_should_close(true); }
-        if 1.0 < epoch.elapsed().unwrap().as_secs_f32() {
-            println!("\x1b[0;35m threads:{} FPS:{:7.2} frame:{} deltas:{} spins:{}\x1b[40m  ",
+
+        if let Some(w) = watch.mark(1.0) {
+            life.add_glider(0, 0);
+            println!("\x1b[0;35m |{}| [{:.2}] frame:{} deltas:{} spins:{}\x1b[40m  ",
                 life.threads,
-                frameCount as f32 / epoch.elapsed().unwrap().as_secs_f32(),
+                w.fps,
                 life.tick,
-                life.delta,
+                deltas,
                 0 //spins.lock().unwrap()
                 );
-            frameCount = 0;
-            epoch = SystemTime::now();
         }
+        if 50000 < life.tick { pwin.set_should_close(true); }
     } // while Some(event)
+    true
 }
 
-pub fn dumpLife (dbuff :& crate::dbuff::Dbuff, width: usize, idx: usize) {
-    dbuff.get(idx).iter().enumerate().for_each( |(i, e)| {
-        if 0 == i % width { println!("") }
-        print!("{}", match *e { 0 => '.', 1 => '@', _ => '?'});
-    } );
-}
-
-pub fn mainLife2 (w: usize, h: usize) {
+fn main_life_ascii (w: usize, h: usize, loopcount: usize) {
+    let mut watch = util::Watch::new();
     let mut life :Life = Life::new(w, h);
+    life.dbuff_en = false;
     let term = ::term::Term::new();
     term.terminalraw();
-
     loop {
-        match term.getc().as_str() { "q" => { break; } _ => () }
-        let dbuff = life.gen_next().render_dbuff();
-        dumpLife(&dbuff, w, 0);
-        println!("\x1b[H");
-        if life.tick == 1000 { break; }
         if 0 == life.tick % 100 { life.add_glider(0,0); }
+        life.gen_next();
+        life.arena_xfer_dbuff();
+        watch.tick().mark(1.0);
+        print!("\x1b[H Game of Life -- ASCII edition {}", watch.fps);
+        // Dump to terminal
+        /*
+        for _ in 0..life.threadvec.len() {  // Wait for threads
+            print!(". ");
+            life.threadvec.pop().unwrap().join().unwrap();
+        }
+        */
+        life.dbuff().buff().iter().enumerate().for_each( |(i, e)| {
+            if 0 == i % w { println!("") }
+            print!("{}", if *e == 0 { '.' } else { '@'});
+        } );
+        life.tick();
+        match &term.getc()[..] {
+          "q" => break,
+          "c" => { life.clear(); }
+          _ => ()
+        }
+        if 0 < loopcount && life.tick == loopcount { break; }
     }
     term.done();
 }
 
 pub fn main () {
     ::std::println!("== {}:{} ::{}::main() ====", std::file!(), core::line!(), core::module_path!());
-    mainLife2(140, 24);
-    mainLife1(200, 100, 4);
+    if true { main_life_2d(140, 24, 10); }
+    if false  { main_life_ascii(140, 24, 10000); }
+    //crate::dbuff::main();
 }
 
 // TODO: message passing pipeline

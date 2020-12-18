@@ -4,7 +4,7 @@ use ::piston_window::*;
 
 /// Linear AlGebra -- 3d Stuff
 
-type Vertex = ::vecmath::Vector4<f32>; //[f32; 4];  // Homogeneous 
+type Vertex = [f32; 4];  // Homogeneous 
 
 type Vertices = Vec<Vertex>;
 

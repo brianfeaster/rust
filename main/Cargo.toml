@@ -12,18 +12,17 @@ util = { path = "../util" }
 term = { path = "../term" }
 life = { path = "../life" }
 libc = "0.2"
-log = "0.4.11"
-pretty_env_logger = "0.4.0"
 rand = "0.7.3"
 json = "0.12.4"
+log = "0.4.11"
+pretty_env_logger = "0.4.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0.57" 
-vecmath = "1.0.0"
 
 # Imports many useful things (all you need if doing simple 2d)
 piston_window = "0.113.0"
 
+piston = "0.52.0"
 pistoncore-glutin_window = "0.67.0"
 piston2d-graphics = "0.39.0"
-# OpenGL backend for Piston
 piston2d-opengl_graphics = "0.76.0"
