@@ -3,8 +3,10 @@ use ::std::ops::{Add, Mul, AddAssign, MulAssign};
 use ::std::time::{SystemTime};
 
 use ::graphics::{Graphics, DrawState};
-use ::opengl_graphics::{GlGraphics, OpenGL, Colored, Textured, TexturedColor};
+//use ::opengl_graphics::{GlGraphics, OpenGL, Colored, Textured, TexturedColor};
+use ::opengl_graphics::{GlGraphics, OpenGL, Colored, Textured};
 use ::piston::*;
+
 
 use ::glutin_window::{GlutinWindow};
 
@@ -615,11 +617,12 @@ fn fun_piston() -> Result<usize, Box<dyn ::std::error::Error>>{
 
     let mut events = Events::new( EventSettings::new().max_fps(180) );
 
-    let glsl = ver.to_glsl();
-    let colored = Colored::new(glsl);
-    let textured = Textured::new(glsl);
-    let texturedcolor = TexturedColor::new(glsl);
-    let mut glgfx = GlGraphics::from_pieces(colored, textured, texturedcolor);
+    //let glsl = ver.to_glsl();
+    //let colored = Colored::new(glsl);
+    //let textured = Textured::new(glsl);
+    //let texturedcolor = TexturedColor::new(glsl);
+    //let mut glgfx = GlGraphics::from_pieces(colored, textured, texturedcolor);
+    let mut glgfx = GlGraphics::new(ver);
 
     life.gen_next();
 
