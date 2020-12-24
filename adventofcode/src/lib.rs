@@ -360,7 +360,7 @@ fn clear8 (prog: &mut Prog) {
     for inst in prog { inst.dirty = false; }
 }
 
-fn parse8 (thefile: &str) -> Prog {
+fn parsefile8 (thefile: &str) -> Prog {
     thefile.lines()
     //.inspect( |l| println!("LINE {}", l) )
     .map( |l| l.split(" ").collect::<Vec<_>>() )
@@ -403,7 +403,7 @@ fn run8 (prog: &mut Prog, mut ip: usize, errorondirty: bool) -> Option<i32> {
 }
 
 fn doit8b (thefile: &str) -> Option<i32> {
-    let mut prog = parse8(thefile);
+    let mut prog = parsefile8(thefile);
     //run8(&mut prog, 0) // 643 last instruction
     for i in 0 .. prog.len() {
         match prog[i].inst {
@@ -428,7 +428,7 @@ fn doit8b (thefile: &str) -> Option<i32> {
 }
 
 fn doit8a (thefile: &str) -> Option<i32> {
-    let mut prog = parse8(thefile);
+    let mut prog = parsefile8(thefile);
     run8(&mut prog, 0, false) // 643 last instruction
 }
 
@@ -545,7 +545,7 @@ fn day10 () {
 // Day11 
 type B11 = HashMap<(i32,i32),i32>;
 
-fn parse11 (filename: &str) -> B11 {
+fn parsefile11 (filename: &str) -> B11 {
     read_to_string(filename).unwrap().lines().enumerate()
     .map( |(y, l)| {
         l.chars().enumerate()
@@ -687,7 +687,7 @@ fn day11 () {
     let mut pltr = Plotter::new();
     pltr.color(1,[0.0, 0.0, 0.0, 1.0]).color(2,[0.0, 0.0, 5.0, 1.0]).color(3,[0.5, 0.5, 0.5, 1.0]);
 
-    let h :B11 = parse11("data/input11.txt");
+    let h :B11 = parsefile11("data/input11.txt");
     println!("Result 11a: {:?}", day11a(&h)); // 2113
     println!("Result 11b: {:?}", day11b(&h)); // 1865
     day11c(&h, &mut pltr);
@@ -1238,6 +1238,316 @@ fn day18 () {
 }
 // Day 18
 ////////////////////////////////////////////////////////////////////////////////
+// Day 19
+
+type B19a = HashMap<usize,Vec<Vec<usize>>>;
+type SS = HashSet<String>;
+type B19m = HashMap<usize,SS>;
+
+fn parse19b (file: &str)  -> Vec<String> {
+    file.lines().map(|l| l.to_string()).collect::<Vec<String>>()
+}
+
+fn parse19 (file: &str)  -> (B19a, B19m) {
+    let mut data = B19a::new();
+    let mut mem =  B19m::new();
+
+    for t in
+        file.lines()
+        .map( |line| Regex::new(r"(\d+): (.*)") .unwrap() .captures(line).unwrap() )
+        .map( |cap| (cap[1].to_string(),
+                     cap[2].split(" | ").map(|e| e.to_string()).collect::<Vec<String>>()) ) {
+        
+        if t.1[0].chars().nth(0).unwrap() == '"' {
+            let mut hs = HashSet::new();
+            hs.insert(t.1[0].chars().nth(1).unwrap().to_string());
+            mem.insert( t.0.parse::<usize>().unwrap() as usize , hs);  // Add the single letter to the cache for this ID
+        } else {
+            data.insert(
+                t.0.parse::<usize>().unwrap(),
+                t.1.iter().map( |s| s.split(" ")
+                              .map( |n| n.parse::<usize>().unwrap())
+                              .collect::<Vec<usize>>() )
+                .collect::<Vec<Vec<usize>>>()
+            );
+        }
+    }
+    //for a in b19 { println!("{:?}", a); } println!("{:?}", s);
+    (data, mem)
+}
+
+fn generateallstrings19(data: &mut B19a, mem: &mut B19m) -> SS {
+    let mut found = -1;
+    'top:
+    loop {
+        let keys = data.keys().clone();
+        let mut hs :SS = HashSet::new(); // Add all possible generated string to this hash set
+        'next:
+        for num in keys {
+            let vv :&Vec<Vec<usize>> = data.get(num).unwrap(); //  Look for a scanner entry we can resolve and move to  hash table
+
+            // If not all numbers in this entry are in the cache, try next...
+            if vv.iter().any( |v| v.iter().any( |n| mem.get(n).is_none())) {
+                 continue 'next;
+            }
+
+            for v in vv { // Over vector of [num, ...] create set of cartesianed strings
+                let mut chs :SS = HashSet::new();
+                chs.insert("".to_string());
+                for n in v { // chs crossproduct ss
+                    if let Some(ss) = mem.get(n) { // might get from cache {str, ...}
+                        let mut _chs :SS = HashSet::new(); // new chs
+                        for a in chs {
+                            for b in ss {
+                                _chs.insert( a.clone() + b);
+                            }
+                        }
+                        chs = _chs;
+                    } else {
+                        println!("ERROR: CAN'T FIND {} IN {:?} SHOULD NEVER HAPPEN", n, vv);
+                    }
+                }
+                hs.extend(chs); // Add set of new strings to set
+            }
+            found = *num as i32; 
+            break;
+        }
+        if found != -1 {
+            data.remove(&(found as usize));
+            mem.insert(found as usize, hs); // Add set of new strings to cache
+            found = -1;
+            continue 'top; // Success! Start from top again
+        }
+        break; // Go to the end without doing work so stop
+    }
+
+    // Peek at left over language:
+    data.iter().for_each( |(k,v)| println!("leftover {:?} {:?}", k,v));
+
+    // Combine hashmap of {String,...} to {String,...}
+    let mut result :SS = HashSet::new();
+    for (_,ss) in mem {
+        for s in ss.iter() {
+            result.insert(s.clone());
+        }
+    }
+    result
+}
+
+fn generatetokens19(data: &mut B19a, mem: &mut B19m) {
+    let mut found = -1;
+    'top:
+    loop {
+        let keys = data.keys().clone();
+        let mut hs :SS = HashSet::new(); // Add all possible generated string to this hash set
+        'next:
+        for num in keys {
+            let vv :&Vec<Vec<usize>> = data.get(num).unwrap(); //  Look for a scanner entry we can resolve and move to  hash table
+
+            // If not all numbers in this entry are in the cache, try next...
+            if vv.iter().any( |v| v.iter().any( |n| mem.get(n).is_none())) {
+                 continue 'next;
+            }
+
+            for v in vv { // Over vector of [num, ...] create set of cartesianed strings
+                let mut chs :SS = HashSet::new();
+                chs.insert("".to_string());
+                for n in v { // chs crossproduct ss
+                    if let Some(ss) = mem.get(n) { // might get from cache {str, ...}
+                        let mut _chs :SS = HashSet::new(); // new chs
+                        for a in chs {
+                            for b in ss {
+                                _chs.insert( a.clone() + b);
+                            }
+                        }
+                        chs = _chs;
+                    } else {
+                        println!("ERROR: CAN'T FIND {} IN {:?} SHOULD NEVER HAPPEN", n, vv);
+                    }
+                }
+                hs.extend(chs); // Add set of new strings to set
+            }
+            found = *num as i32; 
+            break;
+        }
+        if found != -1 {
+            data.remove(&(found as usize));
+            mem.insert(found as usize, hs); // Add set of new strings to cache
+            found = -1;
+            continue 'top; // Success! Start from top again
+        }
+        break; // Go to the end without doing work so stop
+    }
+}
+
+fn doit19a(tokens: &SS, sentences: &Vec<String>) -> usize {
+    sentences.iter().filter( |s|
+        if tokens.get(*s).is_some() { true } else { false }
+    ).count()
+}
+
+//11: 42 31 | 42 11 31
+fn parse11(tokens: &B19m, s: &str, prods: &[usize]) -> bool {
+    return {
+        let mut p = vec!(42, 31);
+        p.extend_from_slice(prods);
+        parse0(tokens, s, &p)
+    } || {
+        let mut p = vec!(42, 11, 31);
+        p.extend_from_slice(prods);
+        parse0(tokens, s, &p)
+    }
+}
+
+
+//8: 42 | 42 8
+fn parse8(tokens: &B19m, s: &str, prods: &[usize]) -> bool {
+    return {
+        let mut p = vec!(42);
+        p.extend_from_slice(prods);
+        parse0(tokens, s, &p)
+    } || {
+        let mut p = vec!(42, 8);
+        p.extend_from_slice(prods);
+        parse0(tokens, s, &p)
+    }
+}
+
+fn parse0 (tokens: &B19m, s: &str, prods: &[usize]) -> bool {
+    if 0==prods.len() && 0==s.len() { return true } // perfect match  GOOD
+    if 0==prods.len() || 0==s.len() { return false; } // ran out of productions or sentence BAD
+    match prods[0] { // recursive decent
+        8 => return parse8(tokens,  s, &prods[1..]),
+        11 => return parse11(tokens, s, &prods[1..]),
+        tid => {
+            for t in tokens[&tid].iter() {
+                let l = t.len();
+                if s.starts_with(t)  && parse0(tokens, &s[l..], &prods[1..]) {
+                    return true
+                }
+            }
+        }
+    }
+    return false
+}
+
+//0: 8 11  <- try and apply this production
+fn doit19b (tokens: &B19m, sentences: &Vec<String>) -> usize {
+    sentences.iter().filter( |s|
+        parse0(&tokens, s, &[8, 11])
+    ).count()
+}
+
+fn day19 () {
+    ::std::println!("== {}:{} ::{}::day19() ====", std::file!(), core::line!(), core::module_path!());
+
+    // Consider all possible tokens that can be generated and compare sentences against them.
+    let filea = read_to_string("data/input19a.txt").unwrap();
+    let (mut data, mut mem) = parse19(&filea);
+    let tokens = generateallstrings19(&mut data, &mut mem);
+    let fileb = read_to_string("data/input19b.txt").unwrap();
+    let sentences = parse19b(&fileb);
+    println!("Result 19a: {:?}", doit19a(&tokens, &sentences));
+
+    // This time use the tokenizer table for a recursive decent parser.
+    let fileab = read_to_string("data/input19ab.txt").unwrap();
+    let (mut datab, mut memb) = parse19(&fileab);
+    generatetokens19(&mut datab, &mut memb);
+    println!("Result 19b: {:?}", doit19b(&memb, &sentences));
+
+}
+// Day 19
+////////////////////////////////////////////////////////////////////////////////
+// Day 20
+#[derive(Debug)]
+struct Piece {
+    id: usize,
+    vals: Vec<[usize;4]>
+}
+
+impl Piece {
+    fn new (id: usize, mut nums: Vec<[usize;2]>) -> Piece {
+        let mut piece = Piece{id:id, vals:vec!()};
+        piece.vals.push( [nums[0][0], nums[1][0], nums[2][1], nums[3][1]]);
+        piece.vals.push( [nums[1][0], nums[2][0], nums[3][1], nums[0][1]]);
+        piece.vals.push( [nums[2][0], nums[3][0], nums[0][1], nums[1][1]]);
+        piece.vals.push( [nums[3][0], nums[0][0], nums[1][1], nums[2][1]]);
+        nums[0][0] ^= nums[0][1]; // Reverse top
+        nums[0][1] ^= nums[0][0];
+        nums[0][0] ^= nums[0][1];
+        nums[2][0] ^= nums[2][1]; // Reverse bottom
+        nums[2][1] ^= nums[2][0];
+        nums[2][0] ^= nums[2][1];
+        let e = nums[1]; // Swap left/right side
+        nums[1] = nums[3];
+        nums[3] = e;
+        piece.vals.push([nums[0][0], nums[1][0], nums[2][1], nums[3][1]]);
+        piece.vals.push([nums[1][0], nums[2][0], nums[3][1], nums[0][1]]);
+        piece.vals.push([nums[2][0], nums[3][0], nums[0][1], nums[1][1]]);
+        piece.vals.push([nums[3][0], nums[0][0], nums[1][1], nums[2][1]]);
+        piece
+    } // new
+}
+
+type B20 = HashMap<usize,Piece>;
+
+fn bin2nums (s: &str) -> [usize;2] {
+    // The number, and the number with 10 bits reversed
+    [usize::from_str_radix(s, 2).unwrap(),
+     usize::from_str_radix(&s.chars().rev().collect::<String>(), 2).unwrap()]
+}
+
+fn parse20 (file: &str) -> B20 {
+    let mut itr = file.lines();
+    let mut hm = B20::new();
+    let mut count = 0;
+    while let Some(line) = itr.next() {
+        let id = &Regex::new(r"Tile (\d+):").unwrap().captures(line).unwrap()[1].parse::<usize>().unwrap();
+        let mut v = vec!();
+        for _ in 0..10 { v.push(itr.next().unwrap().replace("#", "1").replace(".", "0")); }
+        let piece =
+        Piece::new(*id, vec!(
+            bin2nums(&v[0]), // top
+            bin2nums(&v.iter().map(|s|s.chars().nth(9).unwrap()).collect::<String>()), // right
+            bin2nums(&v[9].chars().rev().collect::<String>()), // bott
+            bin2nums(&v.iter().map(|s|s.chars().nth(0).unwrap()).rev().collect::<String>()), // left
+        ));
+        hm.insert(count, piece);
+        count += 1;
+        itr.next(); // skip blankline
+    }
+    hm
+}
+type B20a = HashMap<usize, (usize, usize)>;
+
+fn tryall (_pieces: &B20, table: &B20a, keys: &HashSet<usize> ) {
+    table.iter().for_each( |l| { println!("hm {:?}", l) } );
+    keys.iter().for_each( |l| { println!("keys {:?}", l) } );
+}
+
+fn doit20a (pieces: &B20) -> usize {
+    let mut table = B20a::new(); // loc -> piece, rotation // Table
+    let mut keys = pieces.keys().map(|e|*e).collect::<HashSet<usize>>(); // Pieces to place
+    // Place 0
+    keys.remove(&0);
+    table.insert(0, (0, 0)); // loc -> piece index, rotation
+
+    // Any fits?
+    tryall(pieces, &table, &keys);
+
+    //data.iter() .inspect( |l| { println!("<< {:?}", l) } ) .counat()
+    0
+}
+
+fn day20 () {
+    ::std::println!("== {}:{} ::{}::day20() ====", std::file!(), core::line!(), core::module_path!());
+    let file = read_to_string("data/input20.txt").unwrap();
+    let data = parse20(&file);
+    println!("Result 20a: {:?}", doit20a(&data));
+    //println!("Result 20b: {:?}", doit20b(&data));
+}
+// Day 20
+////////////////////////////////////////////////////////////////////////////////
 // Day 99
 type B99 = HashMap<usize,String>;
 
@@ -1371,9 +1681,13 @@ pub fn main() {
     day18();
     // Result 18a: 510009915468
     // Result 18b: 321176691637769
+    day19();
+    // Result 19a: 129
+    // Result 19b: 243
     day99();
-    }
     day98();
+    }
+    day20();
 
 }
 

@@ -2,25 +2,36 @@
 #![allow(non_snake_case)]
 use ::std::sync::{Arc, Mutex};
 use ::std::thread::{spawn, JoinHandle};
-//use ::std::time::{SystemTime};
 use ::std::ops::{Range};
 use ::piston_window::*;
+
+// Local libs
 use ::util::{Watch};
+use crate::dbuff::*;
 
 /// Game of life
 
 /// Random boolean integer 32 bit.  Returns 0 or 1 with probability 1/m.
 pub fn rbi32(m: u32) -> i32 { ((::rand::random::<u32>() % m) == 0) as i32 }
+pub fn rf32() -> f32 { ::rand::random::<f32>() }
+
+pub fn pattern1 (x: i32, y: i32, s: i32) -> bool {
+    (x*x + y*y) <= s && x.abs() == y.abs()
+}
+pub fn pattern2 (x: i32, y: i32, s: i32) -> bool {
+    ((x*x + y*y) <= s) && (x == 0 || y == 0 || x.abs() == y.abs() )
+}
 
 // Arena ///////////////////////////////////////////////////////////////////////
 
 type Arena = Arc<Vec<Mutex<Vec<i32>>>>;
 
-fn arena_new (w: usize, h: usize) -> Arena  {
+fn arena_new (width: i32, height: i32, s: i32) -> Arena  {
     Arc::new(
-        (0..h).map(
-            |_| Mutex::new(
-                (0..w).map(|_| rbi32(10) )
+        (0..height).map(
+            |_h| Mutex::new(
+                (0..width)
+                .map( |_w| if s == 0 { 0 } else { rbi32(10) } )
                 .collect::<Vec<_>>()))
         .collect::<Vec<Mutex<Vec<_>>>>())
 }
@@ -40,10 +51,16 @@ fn arena_clear (bb :&Arena, w :usize, h :usize) {
     }
 }
 
-fn arena_randomize (bb :&Arena, w :usize, h :usize) {
+fn arena_randomize (bb :&Arena, w :usize, h :usize, s: i32) {
     for y in 0..h {
         let mut row = bb[y].lock().unwrap();
-        for x in 0..w { row[x] = rbi32(10); }
+        for x in 0..w {
+             row[x] = { //rbi32(10);
+                let xx = x as i32 - w as i32 /2;
+                let yy = y as i32 - h as i32 /2;
+                pattern2(xx, yy, s.pow(2)) as i32
+             }
+        }
     }
 }
 
@@ -65,14 +82,13 @@ fn genNewRow (
     let mut k = 0; // Column index
 
     for j in 0..w { // Along the row
-        k = k + 1; // next column index
         // Shift colums left
+        k = k + 1; // next column index
         a = b;
         b = c;
         c = if k==w { firstCol } else { nextAlive = rb[k]; ra[k] + rb[k] + rc[k] };
-        let lives = a + b + c - alive; // Window lives count minus the current live value
-        // Set the next generation cell given neighbor count:  3 or 2 and alive
-        bb[j] = (3 == lives || (2 == lives && 1 == alive)) as i32; // Next gen exists if 3 neighbors or born if 2 neighbors.
+        //// Set the next generation cell given neighbor count:  3 or (2 and alive)
+        bb[j] = ((( a + b + c << 1) as u32).wrapping_sub((alive+5)as u32) < 3) as i32;
         alive = nextAlive; // Consider next cell for next iteration
     }
 }
@@ -123,35 +139,46 @@ fn spwnGenNextRows (
 }
 
 
-// Life ////////////////////////////////////////////////////////////////////////
-
+/// Life ////////////////////////////////////////////////////////////////////////
+// Two arenas that write back and forth to each eacher  one row at a time:
+//           ,------< one or more threads
+//  Arena A  v  Arena B   
+//  [     ] --> [     ]  DbuffB [    ]
+//  [     ] --> [     ]
+//  [     ] --> [     ]  DbuffA [    ]
+//          \____________^  <--- single thread should happen first or interleave?
+//
 pub struct Life {
     whs:    (usize, usize, usize), // width height size
     arenas: (Arena, Arena), // Nested mutable ADTs that can be passed to threads
-    pub dbuffs: (crate::dbuff::Dbuff, crate::dbuff::Dbuff),// Piston is 2xbuffered so we need a dbuff for each
+    pub dbuffs: (Arc<Mutex<Dbuff>>, Arc<Mutex<Dbuff>>),// Piston is 2xbuffered so we need a dbuff for each
     pub dbuff_en: bool,
     pub tick: usize,
-    randomize: bool, // Randomizes field on next generation
+    randomize: i32, // Randomizes field on next generation
     clear: bool,
     threads: usize, // How many threads to spanw for each generation computation
     pub threadvec :Vec<JoinHandle<()>>,
 }
 
-impl Life {
-pub fn new (w: usize, h: usize) -> Life {
-    Life {
+impl Life { pub fn new (w: usize, h: usize) -> Life {
+    let mut this = Life {
         whs: (w, h, w*h),
-        arenas: ( arena_new(w, h), arena_new(w, h) ),
+        arenas: ( arena_new(w as i32, h as i32, 1), arena_new(w as i32, h as i32, 0) ),
         dbuffs: (
-            crate::dbuff::Dbuff::new(w*h),
-            crate::dbuff::Dbuff::new(w*h) ),
+            Arc::new(Mutex::new(Dbuff::new(w*h, 0))),
+            Arc::new(Mutex::new(Dbuff::new(w*h, 1)))),
         dbuff_en: true,
         tick: 0,
-        randomize: false,
+        randomize: 0,
         clear: false,
-        threads: 1,
+        threads: 6,
         threadvec: vec!()
-    }
+    };
+    this.arena_xfer_dbuff();
+    this.tick = 1;
+    this.arena_xfer_dbuff();
+    this.tick = 0;
+    this
 } }
 
 impl Life {
@@ -159,13 +186,11 @@ impl Life {
         self.tick += 1;
         self
     }
-    pub fn randomize (&mut self) -> &mut Self { self.randomize=true; self }
+    pub fn randomize (&mut self, s: i32) -> &mut Self { self.randomize=s; self }
     pub fn clear (&mut self) -> &mut Self { self.clear=true; self }
     pub fn add_glider (&self, x: usize, y: usize) -> &Self {
-        match self.state() {
-            false => draw_glider(&self.arenas.0, x, y),
-            true  => draw_glider(&self.arenas.1, x, y)
-        }
+        let aa = &if self.state() {&self.arenas.1} else {&self.arenas.0};
+        draw_glider(aa, x, y);
         self
     }
     // Which arena generation state?
@@ -173,15 +198,15 @@ impl Life {
     //   True:  Arena 1->0
     pub fn state (&self) -> bool { 1 == self.tick & 1 }
 
-    pub fn gen_next (&mut self) -> &mut Self {
+    pub fn gen_next (&mut self) {
         let (aa, bb) = // aa is the current arena (to read), bb the next arena (to overwrite)
             match self.state() {
                 false => (&self.arenas.0, &self.arenas.1),
                 true  => (&self.arenas.1, &self.arenas.0)
             };
-        if self.randomize {
-            self.randomize = false;
-            arena_randomize(bb, self.whs.0, self.whs.1);
+        if self.randomize != 0 {
+            arena_randomize(bb, self.whs.0, self.whs.1, self.randomize);
+            self.randomize = 0;
         } else if self.clear {
             self.clear = false;
             arena_clear(bb, self.whs.0, self.whs.1);
@@ -194,122 +219,101 @@ impl Life {
                 self.threadvec.push(t);
             }
         }
-        self
+        for _ in 0..self.threadvec.len() { self.threadvec.pop().unwrap().join().unwrap(); }
+        self.arena_xfer_dbuff();
+        self.tick();
     }
 
-    pub fn dbuff (&mut self) -> &mut crate::dbuff::Dbuff {
+    pub fn cmdbuff (&self) -> &Arc<Mutex<Dbuff>> {
         match self.dbuff_en && self.state() {
-            false => &mut self.dbuffs.0,
-            true  => &mut self.dbuffs.1
+            false => &self.dbuffs.0,
+            true  => &self.dbuffs.1
         } 
     }
     
-    pub fn arena_xfer_dbuff (&mut self) -> &mut Self {
-        let aa = match self.state() { // aa is the current arena to read/render from
-            false => &self.arenas.0,
-            true  => &self.arenas.1
+    pub fn arena_xfer_dbuff (&mut self) {
+        let ab = match self.state() { // ab is the arena that was just generated
+            false => &self.arenas.1,
+            true  => &self.arenas.0
         };
-        let dd = match self.dbuff_en && self.state() {
-            false => &mut self.dbuffs.0,
-            true  => &mut self.dbuffs.1
-        }; 
+        let mut dd = match !self.dbuff_en || self.state() {
+            false => &self.dbuffs.1,
+            true  => &self.dbuffs.0
+        }.lock().unwrap(); 
         dd.tick(); // Tick double buffer, clears next active buffer
-        // Copy arena to double buffer
-        for y in (0..aa.len()).rev() { // Reverse the indexing so as to only conflict with the nexst generation thread once in the vector.
-            //dd.put(&aa[y].lock().unwrap());
-            loop { match aa[y].try_lock() { // Spin lock acquire
-                  Err(_) => continue,
+        // Copy each mutxed arena row to double-buffer
+        for y in (0..ab.len()).rev() { // Reverse the indexing so as to only conflict with the nexst generation thread once in the vector.
+            //dd.put(&ab[y].lock().unwrap());
+            loop { match ab[y].try_lock() { // Spin lock acquire
+                  Err(_) => { print!("L0"); ::util::sleep(1); continue } ,
                   Ok(t) => { dd.put(&t); break }
             } }
         }
-        self
     }
 
 }
 
 pub fn piston_draw_2d_callback (
-    dbuff: &crate::dbuff::Dbuff,
+    mdbuff: &Mutex<Dbuff>,
+    whs: &(usize, usize, usize),
     deltas: &mut usize,
-    width: usize,
-    height: usize,
-    context  :piston_window::Context,
     graphics :&mut G2d,
-    cellsize: f64
 ) {
+    let dbuff = mdbuff.lock().unwrap();
     let (ba, bb) = dbuff.buffs();
-    let mut col :usize = 0;
-    let mut row :usize = 0;
+    let mut col :f32 = 0.0;
+    let mut row :f32 = 0.0;
     //clear([0.0, 0.0, 0.0, 1.0], graphics);
 
-    let recBlue  = Rectangle{
-        color: [0.0, 0.0, 1.0, 1.0],
-        shape: rectangle::Shape::Square,
-        border: None //Some(rectangle::Border{ color:[0.0, 1.0, 0.0, 1.0], radius:0.3 })
-    };
-    let recBlack = Rectangle{
-        color: [0.0, 0.0, 0.0, 1.0],
-        shape: rectangle::Shape::Square,
-        border: None //Some(rectangle::Border{ color:[0.0, 0.0, 0.0, 1.0], radius:0.3 })
-    };
+    //let ds = DrawState { blend: None, stencil: None, scissor: None };
+    let ds = DrawState { blend: Some(draw_state::Blend::Alpha), stencil: None, scissor: None };
 
-    let drawState = DrawState {
-        blend: None, //Some(draw_state::Blend::Alpha),
-        stencil: None,
-        scissor: None};
-    let mut poly = [0.0, 0.0, 0.0, 0.0];
-    let xform = context.transform;
-    for i in 0..width*height {
-        if ba[i] != bb[i] {
+    // Scale to NDC "Normalized device coordinate" (still need to translate -1,-1)
+    let sx = 2.0 / whs.0 as f32;
+    let sy = 2.0 / whs.1 as f32;
+    let black = [0.0, 0.0, 0.0, 1.0];
+    //let blue = [rf32(), rf32(), rf32(), 0.5];
+    let blue = [0.0, 0.0, 1.0, 1.0];
+    for i in 0..whs.2 {
+        if ba[i] != bb[i] { // Compare buffer A with Buffer B for change in life state
             *deltas += 1;
-            poly[0] = col as f64 * cellsize;
-            poly[1] = row as f64 * cellsize;
-            poly[2] = cellsize;
-            poly[3] = cellsize;
-            if 0 != ba[i] {
-                recBlue.draw_tri(poly, &drawState, xform, graphics);
-            }else {
-                recBlack.draw_tri(poly, &drawState, xform, graphics);
+            // Split the GoL square into two triangles
+            let (fx, fy) = ( col * sx - 1.0, row * sy - 1.0 );
+            let (gx, gy) = (fx + sx, fy + sy);
+            let poly = [[fx,fy], [gx,fy], [gx,gy], [fx,fy], [gx,gy], [fx,gy]];
+            if true || 0 != ba[i] {
+                graphics.tri_list(&ds, &if 0!=ba[i]{blue}else{black}, |f| f(&poly));
             }
         }
-        col += 1;
-        if col == width { col = 0; row += 1; }
+        col += 1.0;
+        if col == whs.0 as f32 { col = 0.0; row += 1.0; }
     }
-    if false {
-    Rectangle{
-        color: [0.0, 0.0, 0.0, 0.02],
-        shape: rectangle::Shape::Square,
-        border: None
-    }.draw_tri(
-        [-1.0, -1.0, 2.0, 2.0],
-        &DrawState {
-            blend: Some(draw_state::Blend::Alpha),
-            stencil: None,
-            scissor: None},
-        [[1.0,0.0,0.0],
-         [0.0,1.0,0.0]],
-        graphics);
+    if false { // Slowly erase screen.  Disable recBlack plots for cool effect.
+        graphics.tri_list(&ds, &[-1.0, -1.0, -1.0, 0.06],
+             |f| f(&maketriangle()[..]));
     }
     //rectangle( [ 1.0, 0.0, 0.0, 1.0 ], [ 50.0, 50.0, 50.0, 50.0 ], context.transform, graphics);
 } // fn piston_draw_2d_callback
 
+fn maketriangle () -> [[f32;2];6] {
+    [ [-1.0,-1.0], [1.0,-1.0], [1.0,1.0],
+      [-1.0,-1.0], [1.0,1.0],  [-1.0,1.0] ]
+}
+
 pub fn piston_render (
-    life: &mut Life,
-    //dbuff: &crate::dbuff::Dbuff,
+    mdbuff: &Mutex<Dbuff>,
+    whs: &(usize, usize, usize),
     pwin: &mut PistonWindow,
     event: Event,
-    cellsize: f64
 ) -> usize {
-    let w = life.whs.0;
-    let h = life.whs.1;
-    let dbuff = life.dbuff();
     let mut deltas :usize = 0; // Count number of changes from last aren
-    pwin.draw_2d(
-        &event,
-        |context:  piston_window::Context,
-            graphics: &mut piston_window::G2d,
-            _device:  &mut piston_window::GfxDevice
-        | { piston_draw_2d_callback(dbuff, &mut deltas, w, h, context, graphics, cellsize); }
-    );
+    pwin.draw_2d( &event,
+        | _context:  piston_window::Context,
+          graphics: &mut piston_window::G2d,
+          _device:  &mut piston_window::GfxDevice
+        | {
+        piston_draw_2d_callback(mdbuff, whs, &mut deltas, graphics);
+    });
     deltas
 }
 
@@ -328,7 +332,8 @@ fn main_life_2d (w: usize, h: usize, cellsize: usize) -> bool {
             .decorated(true)
             .build()
             .unwrap();
-    pwin.set_max_fps(1000);
+    let mut s = 1;
+    pwin.set_max_fps(50);
 
         /* Ghetto dump arena
         for y in 0..24 {
@@ -343,46 +348,43 @@ fn main_life_2d (w: usize, h: usize, cellsize: usize) -> bool {
 
 
     //let mut d = ::util::delta();
-    life.gen_next();
+    // First time this is called, it will be overwriting Arena B with Arena A's next gen and subsequenty copy the arena to dbuff B.
+    // IN the mean time, dbuff A can be read and rednered.
+    //life.tick();
+    // Tick should represent which Arena is readable.  tick==0 implies Arena A is readable
+    // After first gen_next, tick should be incremented to indicated Arena B should be read
     while let Some(event) = pwin.next() {
         match event { // events.next(&mut pwin)
         Event::Loop(Loop::Idle(IdleArgs{dt:_})) => { },
         Event::Input(Input::Resize(ResizeArgs{window_size:_, draw_size:_}), _) => { },
-        Event::Input(Input::Button(ButtonArgs{state:_, button:Button::Keyboard(k), scancode:_}), _) => {
-            match k {
-                Key::Space  => { life.randomize(); },
-                Key::C      => { life.clear(); },
-                Key::Q |
-                Key::Escape => { pwin.set_should_close(true); },
-                _ => ()
+        Event::Input(Input::Button(ButtonArgs{state:st, button:Button::Keyboard(k), scancode:_}), _) => {
+            if st == ButtonState::Press {
+                match k {
+                    Key::Space  => { s+=1; life.randomize(s);},
+                    Key::C      => { life.clear(); },
+                    Key::Q |
+                    Key::Escape => { pwin.set_should_close(true); },
+                    _ => ()
+                }
             }
         },
         Event::Loop(Loop::Render(_args)) => {
-            life.arena_xfer_dbuff();
-            // Wait for threads to finish
-            print!("{} ", life.threadvec.len());
-            for _ in 0..life.threadvec.len() { 
-                print!(". ");
-                life.threadvec.pop().unwrap().join().unwrap();
-            }
             //println!("{:?}", d());
-            deltas = piston_render(&mut life, &mut pwin, event, cellsize as f64);
+            let mdbuff = life.cmdbuff().clone();
+            let whs = life.whs;
+            life.gen_next(); // Start next gen while current gen is rendered
+            deltas = piston_render(&mdbuff, &whs, &mut pwin, event);
             //d();
-            life.tick();
+            //if 1==watch.tick { life.add_glider(0, 0); }
             watch.tick();
-            life.gen_next();
         },
-        _ => () } // match
+        _ => ()
+        } // match
 
-        if let Some(w) = watch.mark(1.0) {
-            life.add_glider(0, 0);
-            println!("\x1b[0;35m |{}| [{:.2}] frame:{} deltas:{} spins:{}\x1b[40m  ",
-                life.threads,
-                w.fps,
-                life.tick,
-                deltas,
-                0 //spins.lock().unwrap()
-                );
+        if let Some(w) = watch.mark(2.0) {
+            //life.add_glider(0, 0);
+            println!("\x1b[0;35m{} [{:.2}]\tgens:{} ∆lifes:{} spins:{} s={}\x1b[40m",
+                life.threads, w.fps, life.tick, deltas, 0, s);
         }
         if 50000 < life.tick { pwin.set_should_close(true); }
     } // while Some(event)
@@ -397,8 +399,8 @@ fn main_life_ascii (w: usize, h: usize, loopcount: usize) {
     term.terminalraw();
     loop {
         if 0 == life.tick % 100 { life.add_glider(0,0); }
+        let mdbuff = life.cmdbuff().clone();
         life.gen_next();
-        life.arena_xfer_dbuff();
         watch.tick().mark(1.0);
         print!("\x1b[H Game of Life -- ASCII edition {}", watch.fps);
         // Dump to terminal
@@ -408,14 +410,14 @@ fn main_life_ascii (w: usize, h: usize, loopcount: usize) {
             life.threadvec.pop().unwrap().join().unwrap();
         }
         */
-        life.dbuff().buff().iter().enumerate().for_each( |(i, e)| {
+        mdbuff.lock().unwrap().buff().iter().enumerate().for_each( |(i, e)| {
             if 0 == i % w { println!("") }
             print!("{}", if *e == 0 { '.' } else { '@'});
         } );
-        life.tick();
         match &term.getc()[..] {
           "q" => break,
           "c" => { life.clear(); }
+          " " => { life.randomize(8); }
           _ => ()
         }
         if 0 < loopcount && life.tick == loopcount { break; }
@@ -425,14 +427,14 @@ fn main_life_ascii (w: usize, h: usize, loopcount: usize) {
 
 pub fn main () {
     ::std::println!("== {}:{} ::{}::main() ====", std::file!(), core::line!(), core::module_path!());
-    if true { main_life_2d(140, 24, 10); }
-    if false  { main_life_ascii(140, 24, 10000); }
+    if !false  { main_life_2d(300, 300, 3); }
+    if !true { main_life_ascii(140, 24, 10000); }
     //crate::dbuff::main();
 }
 
 // TODO: message passing pipeline
 //   Verify a thread crashing with a lock and subsequent threads receiving
-//   invalid locks can communicate the new state (machine).
+//   invalid locks can communicate the new state (machine)/
 /*
                 println!("{:?}", event);
 */

@@ -548,8 +548,7 @@ fn render_polygons (
     // Determine which Game Of Life cells are visible
     let goloffset = 200;
     if let Some(dbuff) = dbuff {
-        let dbuffa = dbuff.buff();
-        let dbuffb = dbuff.bufflast();
+        let (dbuffa, dbuffb) = dbuff.buffs();
         for (i, e) in dbuffa.iter().zip(dbuffb.iter()).enumerate() {
         if *e.0 != *e.1 {
             if *e.0 == 0 {  // Died
@@ -627,7 +626,7 @@ fn fun_piston() -> Result<usize, Box<dyn ::std::error::Error>>{
     while let Some(event) = events.next(&mut pwin) { match event {
         Event::Loop( Loop::Render(args) ) => {
             if life.tick % 15 == 0 { life.add_glider(0, 0); }
-            if life.tick % 100 == 0 { life.randomize(); }
+            //if life.tick % 100 == 0 { life.randomize(s); }
 
             life.arena_xfer_dbuff();
             // Wait for threads to finish
@@ -635,10 +634,10 @@ fn fun_piston() -> Result<usize, Box<dyn ::std::error::Error>>{
                 life.threadvec.pop().unwrap().join().unwrap();
             }
             life.gen_next();
-            let dbuff = &life.dbuffs.0;
+            let dbuff = &life.dbuffs.0.lock().unwrap();
 
             let c = glgfx.draw_begin(args.viewport());
-                render_polygons(&c.draw_state, &mut glgfx, &mut state, &mut polys, 1.0, Some(&dbuff));
+                render_polygons(&c.draw_state, &mut glgfx, &mut state, &mut polys, 1.0, Some(dbuff));
             glgfx.draw_end();
 
             state.tick().printfps(true); // Increment frame count

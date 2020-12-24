@@ -52,46 +52,54 @@ pub fn delta () -> impl FnMut()->Duration  {
 
 #[derive (Debug)]
 pub struct Watch {
+    // Duration - Relative to instantiation
     epoch: SystemTime,
+    ticks: u32,
+    // Period - Relative to last mark
+    time: SystemTime,
     pub tick: u32,
-    pub ticks: u32,
+    // Mark - Static period details
     pub fps: f32
 }
 
 impl Watch {
     pub fn new() -> Self {
-        Watch {
-            epoch:SystemTime::now(),
-            tick: 0,
-            ticks: 0,
+        let now = SystemTime::now();
+        Self {
+            epoch:now, ticks: 0, 
+            time:now, tick: 0,
             fps: 0.0
         }
     }
+
+    /// Duration since watch creation.
+    pub fn duration (&self) -> f32 {
+        SystemTime::now().duration_since(self.epoch).unwrap().as_secs_f32()
+    }
+
+    // Duration time since last mark.
+    pub fn period (&self) -> f32 {
+        SystemTime::now().duration_since(self.time).unwrap().as_secs_f32()
+    }
+
+    // Increase tick count for this period.
     pub fn tick(&mut self) -> &mut Self {
         self.tick += 1;
         self
     }
 
-    pub fn duration (&self) -> f32 {
-        if self.fps == 0.0 {
-            SystemTime::now().duration_since(self.epoch).unwrap().as_secs_f32()
-        } else {
-            self.ticks as f32 / self.fps
-        }
-    }
-
-    /// Commit fps and ticks
+    /// Update static fps and ticks values, reset period.
     pub fn mark(&mut self, after:f32) -> Option<&mut Self> {
         let now = SystemTime::now();
-        let secs = now.duration_since(self.epoch).unwrap().as_secs_f32();
+        let secs = now.duration_since(self.time).unwrap().as_secs_f32();
         if secs < after {
             None
         } else {
             // Set current details
-            self.ticks = self.tick;
             self.fps = self.tick as f32 / secs;
             // Reset state
-            self.epoch = now;
+            self.ticks += self.tick;
+            self.time = now;
             self.tick = 0;
             Some(self)
         }

@@ -12,11 +12,11 @@ pub struct Dbuff {
 impl Dbuff {
 
     // Put buffers in useable state.  Current buff is all 0, previous buff all MIN.
-    pub fn new (len :usize) -> Dbuff {
+    pub fn new (len :usize, s: i32) -> Dbuff {
         let mut ba = Vec::with_capacity(len);
         let mut bb = Vec::with_capacity(len);
-        ba.resize(len, 0);
-        bb.resize(len, ::std::i32::MIN);
+        ba.resize(len, ::std::i32::MAX-s);
+        bb.resize(len, ::std::i32::MIN+s);
         Dbuff {
             buffa: ba,
             buffb: bb,
@@ -29,9 +29,10 @@ impl Dbuff {
     pub fn buff (&self) -> &Vec<i32> {
         if self.state() { &self.buffb } else { &self.buffa }
     }
-    pub fn bufflast (&self) -> &Vec<i32> {
-        if self.state() { &self.buffa } else { &self.buffb }
+    pub fn buffm (&mut self) -> &mut Vec<i32> {
+        if self.state() { &mut self.buffb } else { &mut self.buffa }
     }
+    // Returns (buffCurrent, buffLats) for delta comparisoning
     pub fn buffs (&self) -> (&Vec<i32>, &Vec<i32>) {
         if self.state() {
             (&self.buffb, &self.buffa)
@@ -42,15 +43,13 @@ impl Dbuff {
 
     pub fn tick (&mut self) -> &Self {
         self.tick += 1;
-        let buff = if self.state() { &mut self.buffb } else { &mut self.buffa };
-        buff.clear();
+        self.buffm().clear();
         self
     }
 
     // Put/append i32s onto active buffer
     pub fn put (&mut self, v :&[i32]) -> &Self {
-        let buff = if self.state() { &mut self.buffb } else { &mut self.buffa };
-        buff.extend_from_slice(v);
+        self.buffm().extend_from_slice(v);
         self
     }
 
@@ -68,7 +67,7 @@ fn test_dbuff () {
     let a2 = [10,20,30];
     let a3 = [100,200,300];
     println!("{:?}", a1); println!("{:?}", a2); println!("{:?}", a3);
-    let mut db = Dbuff::new(10);
+    let mut db = Dbuff::new(10, 1);
     db       .put(&a1)           .db();
     db.tick(); db.put(&[10,20,30])   .db();
     db.tick(); db.put(&[100,200,300]).db();
