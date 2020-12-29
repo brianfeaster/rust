@@ -1,14 +1,15 @@
 #![allow(non_snake_case)]
 use std::collections::{HashMap, HashSet};
-use regex::Regex;
+use regex::{Regex};
 use std::fs::{read_to_string};
 use std::fmt::{Debug};
 use util::{Plotter};
-use std::ops::{Index};
+//use std::ops::{Index};
 
 ////////////////////////////////////////////////////////////////////////////////
 // Useful
 
+/*
 fn db<T: Debug> (o: &T) { println!("{:?}", o); }
 
 /// Strings Table
@@ -38,6 +39,10 @@ impl Index<usize> for Strings {
 //        self.hm.entry(num).or_insert(String::new())
 //    }
 //}
+*/
+
+/// Create a string from a slice
+fn S (s: &str) -> String { s.to_string() }
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -1459,32 +1464,74 @@ fn day19 () {
 // Day 19
 ////////////////////////////////////////////////////////////////////////////////
 // Day 20
+type Character = Vec<Vec<usize>>;
+
 #[derive(Debug)]
 struct Piece {
     id: usize,
+    character: Character, // un-transformed ASCII 8x8 bitmap
     vals: Vec<[usize;4]>
 }
 
+// 
+/* Rotate left (counter clockwise) positive x and y go right and down
+  0 1 0   1   1   6   6
+ -1 0 7 * 1 = 6 = 6 = 1
+  0 0 1   1   1   1   1
+*/
+
+const IDENTITY  :[f32; 9] = [ 1.0, 0.0,  0.0,   0.0, 1.0,  0.0,   0.0, 0.0, 1.0];
+const SHIFTORIG :[f32; 9] = [ 1.0, 0.0, -3.5,   0.0, 1.0, -3.5,   0.0, 0.0, 1.0];
+const ROTLEFT90 :[f32; 9] = [ 0.0, 1.0,  0.0,  -1.0, 0.0,  0.0,   0.0, 0.0, 1.0];
+const ROTRIGH90 :[f32; 9] = [ 0.0,-1.0,  0.0,   1.0, 0.0,  0.0,   0.0, 0.0, 1.0];
+const FLIPHORIZ :[f32; 9] = [-1.0, 0.0,  0.0,   0.0, 1.0,  0.0,   0.0, 0.0, 1.0];
+const SHIFTBACK :[f32; 9] = [ 1.0, 0.0,  3.5,   0.0, 1.0,  3.5,   0.0, 0.0, 1.0];
+
+fn mulmat (a:&[f32; 9], b:&[f32; 9]) -> [f32; 9] {
+    [a[0]*b[0] + a[1]*b[3] + a[2]*b[6],  a[0]*b[1] + a[1]*b[4] + a[2]*b[7],  a[0]*b[2] + a[1]*b[5] + a[2]*b[8],
+     a[3]*b[0] + a[4]*b[3] + a[5]*b[6],  a[3]*b[1] + a[4]*b[4] + a[5]*b[7],  a[3]*b[2] + a[4]*b[5] + a[5]*b[8],
+     a[6]*b[0] + a[7]*b[3] + a[8]*b[6],  a[6]*b[1] + a[7]*b[4] + a[8]*b[7],  a[6]*b[2] + a[7]*b[5] + a[8]*b[8]]
+} 
+
+fn makerotations () -> [[f32; 9]; 8] {
+    [IDENTITY,
+     mulmat(&SHIFTBACK, &mulmat(&ROTRIGH90, &SHIFTORIG)),
+     mulmat(&SHIFTBACK, &mulmat(&ROTRIGH90, &mulmat(&ROTRIGH90, &SHIFTORIG))),
+     mulmat(&SHIFTBACK, &mulmat(&ROTRIGH90, &mulmat(&ROTRIGH90, &mulmat(&ROTRIGH90, &SHIFTORIG)))),
+     mulmat(&SHIFTBACK, &mulmat(&FLIPHORIZ, &SHIFTORIG)),
+     mulmat(&SHIFTBACK, &mulmat(&ROTLEFT90, &mulmat(&FLIPHORIZ, &SHIFTORIG))),
+     mulmat(&SHIFTBACK, &mulmat(&ROTLEFT90, &mulmat(&ROTLEFT90, &mulmat(&FLIPHORIZ, &SHIFTORIG)))),
+     mulmat(&SHIFTBACK, &mulmat(&ROTLEFT90, &mulmat(&ROTLEFT90, &mulmat(&ROTLEFT90, &mulmat(&FLIPHORIZ, &SHIFTORIG)))))]
+}
+
+// Given a rotation and x,y, give the new coordinates
+fn rotate20 (rotations: &[[f32; 9]; 8], rot: usize, x: usize, y: usize) -> (i32, i32) {
+    let mat = rotations[rot];
+    let res = 
+     ( (mat[0]*x as f32 + mat[1]*y as f32 + mat[2]) as i32,
+       (mat[3]*x as f32 + mat[4]*y as f32 + mat[5]) as i32);
+    //println!("rot={} ({},{}) -> ({},{})", rot, x, y, res.0, res.1);
+    res
+}
+
 impl Piece {
-    fn new (id: usize, mut nums: Vec<[usize;2]>) -> Piece {
-        let mut piece = Piece{id:id, vals:vec!()};
+    fn new (id: usize, character: Character, mut nums: Vec<[usize;2]>) -> Piece {
+        let mut piece = Piece{
+            id:id,
+            character:character,
+            vals:vec!()
+        };
         piece.vals.push( [nums[0][0], nums[1][0], nums[2][1], nums[3][1]]);
         piece.vals.push( [nums[1][0], nums[2][0], nums[3][1], nums[0][1]]);
         piece.vals.push( [nums[2][0], nums[3][0], nums[0][1], nums[1][1]]);
         piece.vals.push( [nums[3][0], nums[0][0], nums[1][1], nums[2][1]]);
-        nums[0][0] ^= nums[0][1]; // Reverse top
-        nums[0][1] ^= nums[0][0];
-        nums[0][0] ^= nums[0][1];
-        nums[2][0] ^= nums[2][1]; // Reverse bottom
-        nums[2][1] ^= nums[2][0];
-        nums[2][0] ^= nums[2][1];
         let e = nums[1]; // Swap left/right side
         nums[1] = nums[3];
         nums[3] = e;
-        piece.vals.push([nums[0][0], nums[1][0], nums[2][1], nums[3][1]]);
-        piece.vals.push([nums[1][0], nums[2][0], nums[3][1], nums[0][1]]);
-        piece.vals.push([nums[2][0], nums[3][0], nums[0][1], nums[1][1]]);
-        piece.vals.push([nums[3][0], nums[0][0], nums[1][1], nums[2][1]]);
+        piece.vals.push([nums[0][1], nums[1][1], nums[2][0], nums[3][0]]);
+        piece.vals.push([nums[1][1], nums[2][1], nums[3][0], nums[0][0]]);
+        piece.vals.push([nums[2][1], nums[3][1], nums[0][0], nums[1][0]]);
+        piece.vals.push([nums[3][1], nums[0][1], nums[1][0], nums[2][0]]);
         piece
     } // new
 }
@@ -1505,8 +1552,17 @@ fn parse20 (file: &str) -> B20 {
         let id = &Regex::new(r"Tile (\d+):").unwrap().captures(line).unwrap()[1].parse::<usize>().unwrap();
         let mut v = vec!();
         for _ in 0..10 { v.push(itr.next().unwrap().replace("#", "1").replace(".", "0")); }
+
+        let character =
+            v[1..9].iter()
+            .map(
+                |s| s[1..9].chars()
+                .map(|c| if c=='1' {1} else { 0})
+                .collect::<Vec<usize>>()
+            ).collect::<Character>();
+
         let piece =
-        Piece::new(*id, vec!(
+        Piece::new(*id, character, vec!(
             bin2nums(&v[0]), // top
             bin2nums(&v.iter().map(|s|s.chars().nth(9).unwrap()).collect::<String>()), // right
             bin2nums(&v[9].chars().rev().collect::<String>()), // bott
@@ -1518,104 +1574,585 @@ fn parse20 (file: &str) -> B20 {
     }
     hm
 }
-type B20a = HashMap<usize, (usize, usize)>;
+//                     table#  piece#, rot#
+type Table20 = HashMap<usize, (usize, usize)>;
 
-fn tryall (_pieces: &B20, table: &B20a, keys: &HashSet<usize> ) {
-    table.iter().for_each( |l| { println!("hm {:?}", l) } );
-    keys.iter().for_each( |l| { println!("keys {:?}", l) } );
+const M: usize = 99999999;
+
+fn tryall (pieces: &B20, table: &Table20, keys: &HashSet<usize>, size: usize ) -> Option<Table20> {
+    if keys.len() == 0 {
+        return Some(table.clone())
+    }
+    let count = table.len();
+    let y=count/size;
+    let x=count%size;
+
+    let leftconstraint = if x<1 { M } else {
+        let (piece, rot) = table.get(&(y*size+x-1)).unwrap();
+        pieces.get(piece).unwrap().vals[*rot][1] // Right side value
+    };
+
+    let topconstraint = if y<1 { M } else {
+        let (piece, rot) = table.get(&((y-1)*size+x)).unwrap();
+        pieces.get(piece).unwrap().vals[*rot][2] // Bottom side value
+    };
+
+    for k in keys { // For every unplaced puzzle piece
+        for r in 0..8 { // For every orientation of said puzzle piece
+            if (topconstraint == M || pieces.get(k).unwrap().vals[r][0] == topconstraint) &&
+               (leftconstraint == M || pieces.get(k).unwrap().vals[r][3] == leftconstraint)
+            {
+                let mut newtable :Table20       = table.clone(); newtable.insert(count, (*k,r));
+                let mut newkeys :HashSet<usize> = keys.clone();  newkeys.remove(k);
+                let ret = tryall(pieces, &newtable, &newkeys, size);
+                if ret.is_some() { return ret; }
+
+            }
+        }
+    }
+    None
 }
 
-fn doit20a (pieces: &B20) -> usize {
-    let mut table = B20a::new(); // loc -> piece, rotation // Table
-    let mut keys = pieces.keys().map(|e|*e).collect::<HashSet<usize>>(); // Pieces to place
-    // Place 0
-    keys.remove(&0);
-    table.insert(0, (0, 0)); // loc -> piece index, rotation
-
-    // Any fits?
-    tryall(pieces, &table, &keys);
-
-    //data.iter() .inspect( |l| { println!("<< {:?}", l) } ) .counat()
-    0
+fn doit20a (pieces: &B20, table: &Table20, size: usize) -> usize {
+    /*for idx in 0..table.len() {
+        let (p,_) = table.get(&idx).unwrap();
+        print!(" {}", pieces.get(p).unwrap().id);
+        if (idx % size) == size-1 { println!(""); }
+    }
+    for i in 0..table.len() {
+        let (p,r) = table.get(&i).unwrap();
+        print!("  {:3},{}", p, r);
+        if i%size == size-1 { println!("") }
+    }*/
+    return
+            pieces.get(&table.get(&0).unwrap().0).unwrap().id *
+            pieces.get(&table.get(&(size-1)).unwrap().0).unwrap().id *
+            pieces.get(&table.get(&(size*size-size)).unwrap().0).unwrap().id *
+            pieces.get(&table.get(&(size*size-1)).unwrap().0).unwrap().id;
 }
+
+fn doit20b (pieces: &B20, table: &Table20, size: i32) -> usize {
+    let mut plot = util::Plotter::new();
+    let rotations = makerotations();
+    let mut arena = util::PlotterPoints::new();
+    for t in 0..size*size as i32 {
+        let ty = t / size;
+        let tx = t % size;
+        let (piece,rot) = &table.get(&(t as usize)).unwrap();
+        let character = &pieces.get(&piece).unwrap().character; 
+        //let character = &pieces.get(&0).unwrap().character; 
+        let clr = 7;//ri32(15) + 1;
+        for c in 0..64 as usize {
+            let (x,y) = ((c%8) as i32 ,(c/8) as i32 );
+            let (cx,cy):(i32, i32) = rotate20(&rotations, *rot, x as usize, y as usize);
+            let ch = character[cy as usize][cx as usize];
+            arena.insert((8*tx + x, 8*ty + y), if ch == 1 { clr } else { 0 });
+             plot.insert( 8*tx + x, 8*ty + y,  if ch == 1 { clr } else { 0 });
+        }
+    }
+    let alivecount = arena.iter().filter( |(_,v)| **v!=0).count();
+    let dragon =
+    ["                  # ",
+     "#    ##    ##    ###",
+     " #  #  #  #  #  #   "].iter().enumerate()
+    .map(|(y,s)| s.chars().rev()
+                  .enumerate()
+                  .filter_map( move |(x,c)| if c=='#' { Some(((y as i32, x as i32),1)) } else { None } ))
+    .flatten()
+    .collect::<util::PlotterPoints>();
+    let dragoncount = dragon.iter().filter( |(_,v)| **v!=0).count();
+
+    plot.renderhash(&arena);
+
+    let mut dragonsfound = 0;
+    for y in 0..size*8 {
+    'a:for x in 0..size*8 {
+            for ((dx,dy),_) in dragon.clone() {
+                match arena.get(&(x+dx, y+dy)) {
+                    Some(r) => if *r == 0 { continue 'a; },
+                    _       => { continue 'a; }
+                }
+            }
+            // found a dragon
+            dragonsfound += 1;
+            for ((dx,dy),c) in dragon.clone() {
+                arena.insert((dx+x, dy+y), c); // color it red
+            }
+        }
+    }
+
+    //while plot.renderhash(&arena).key.is_none() { sleep(100); plot.render(); sleep(100); }
+
+    alivecount - dragonsfound * dragoncount
+} // Result 20b: 1555 if you're lucky
 
 fn day20 () {
     ::std::println!("== {}:{} ::{}::day20() ====", std::file!(), core::line!(), core::module_path!());
     let file = read_to_string("data/input20.txt").unwrap();
-    let data = parse20(&file);
-    println!("Result 20a: {:?}", doit20a(&data));
-    //println!("Result 20b: {:?}", doit20b(&data));
+    let pieces = parse20(&file);
+    let table = tryall(&pieces, &Table20::new(), &pieces.keys().map(|e|*e).collect::<HashSet<usize>>(), 12).unwrap(); // Pieces, empty Table, Piece indices to place on table
+    println!("Result 20a: {:?}", doit20a(&pieces, &table, 12)); // 107399567124539
+    println!("Result 20b: {:?}", doit20b(&pieces, &table, 12)); // 1555
 }
 // Day 20
 ////////////////////////////////////////////////////////////////////////////////
-// Day 99
-type B99 = HashMap<usize,String>;
+// Day 21
+type Ingredients21 = HashSet<String>;
+type Foods21 = Vec<Ingredients21>;
+type Allergens21 = HashMap<String, Vec<usize>>; // Allergen -> [foodID ...]
 
-fn parse99 (file: &str) -> B99 {
-    Regex::new(r"(\w?) (.*)").unwrap().captures_iter( &file  )
-    .inspect( |l| println!("| {:?}", l) )
-    .filter( |cap| &cap[1] != "" ) // all newlines become an empty capture for some reason
-    .map( |cap| {
-        let line = cap[1].to_string();
-        line
-    })
-    .enumerate()
-    .collect::<B99>()
+fn parse21 (file: &str) -> (Foods21, Allergens21, Ingredients21) {
+    let mut allergens = Allergens21::new();
+    let mut foods = Foods21::new();
+    file.lines().map( |l| Regex::new(r"(.*) \(contains ([^)]+)\)").unwrap().captures(&l).unwrap() )
+    .for_each( |c| {
+        let ingredients = c[1].split(" ").map(S).collect::<Ingredients21>();
+        c[2].split(", ").for_each( |allergen| {
+              let set :&mut Vec<usize> = allergens.entry(S(&allergen)).or_insert(vec!());
+              set.push(foods.len()); 
+        }); // Hash of allergen -> [foodID ...]
+        foods.push(ingredients); // Vector of food
+    });
+    let mut allergenicingredients = Ingredients21::new();
+    for (_allergen, vecfoodid) in &allergens {  // allergens and a vector of sets containing possible ingredients
+        //print!("{} {:?}", allergen, vecfoodid);
+        let mut i :Ingredients21 = foods[vecfoodid[0]].clone();
+        for fid in vecfoodid { i = &i & &foods[*fid]; } // intersection of all the set of ingredients for this allergen
+        //println!(" == \x1b[33m{:?}\x1b[0m", i);
+        allergenicingredients = &allergenicingredients | &i; // Add to global set of identified allergenic ingredients
+    }
+    (foods, allergens, allergenicingredients) // AKA foods, hvhs
 }
 
-fn doit99a (data: &B99) -> usize {
-    data.iter()
-    .inspect( |l| { println!("<< {:?}", l) } )
-    .count()
+// foods is a vector of hashsets (ingredients)
+// allergens is a map Allergen name to vector of food IDS
+fn doit21a (foods: &Foods21, allergenicingredients: &Ingredients21) -> usize {
+    println!("\x1b[33mallergenicingredients {:?}\x1b[0m\n", allergenicingredients);
+    let mut sum = 0; // Count ingredients in foods that aren't allergenic
+    for ingredients in foods {
+        //println!("food {:?}", ingredients);
+        let diff =  ingredients - &allergenicingredients;
+        //println!("\x1b[31mdiff {:?}\x1b[0m\n", diff);
+        sum += diff.len();
+    }
+    sum 
+}
+//mxmxvkd sqjhc      .     nhms kfcds   . dairy fish
+//mxmxvkd sqjhc      .sbzzf             .       fish
+//mxmxvkd       fvjkl.sbzzf          trh. dairy
+//        sqjhc fvjkl.                  .            soy
+fn doit21b (
+    foods: &Foods21,
+    allergenicingredients: &Ingredients21,
+    allergens: &Allergens21
+) -> String {
+    let mut am :Vec<(String, Ingredients21)> = vec!();
+    for (alg,foodidvec) in allergens {
+        let ing = 
+            &foodidvec
+                .iter()
+                .fold( foods[foodidvec[0]].clone(), |r, id| &r & & foods[*id] )
+            & allergenicingredients;
+            am.push((S(alg), ing));
+    }
+    am.sort_by( |a,b| a.0.cmp(&b.0) );
+    findorder21(&am, &Ingredients21::new()).unwrap_or(S("NONE"))
 }
 
-fn day99 () {
-    ::std::println!("== {}:{} ::{}::day99() ====", std::file!(), core::line!(), core::module_path!());
-    let file = read_to_string("data/input99.txt").unwrap();
-    let data = parse99(&file);
-    println!("Result 99a: {:?}", doit99a(&data));
-    //println!("Result 99b: {:?}", doit99b(&data));
+fn findorder21 (am:&Vec<(String, Ingredients21)>, used:&Ingredients21) -> Option<String> {
+    if 0 == am.len() { return Some(S("")); }
+    let mut tocheck = (&am[0].1 - &used).iter().map(|s|S(s)).collect::<Vec<String>>();
+    tocheck.sort();
+    //println!("am={:?}\ntocheck={:?}\nused={:?}\n", &am, &tocheck, &used);
+    for ing in tocheck {
+        let mut am2 = am.clone();       am2.remove(0);
+        let mut used2 = used.clone(); used2.insert(ing.clone());
+        if let Some(res) = findorder21(&am2, &used2) {
+            return Some(ing+","+&res);
+        }
+    }
+    None
 }
-// Day 99
+
+fn day21 () {
+    ::std::println!("== {}:{} ::{}::day21() ====", std::file!(), core::line!(), core::module_path!());
+    let file = read_to_string("data/input21.txt").unwrap();
+    let (foods, allergens, alergenicingredients) = parse21(&file);
+    println!("Result 21a: {:?}", doit21a(&foods, &alergenicingredients)); // Result 21a: 2517
+    println!("Result 21b: {}", doit21b(&foods, &alergenicingredients, &allergens));
+}
+// Day 21
 ////////////////////////////////////////////////////////////////////////////////
-// Day 98
+// Day 22
+type Cards22 = Vec<usize>;
 
-type B98 = HashMap<usize,String>;
+fn parse22 (file: &str) -> (Cards22, Cards22) {
+    let mut cards = vec!();
+    for line in file.lines() {
+        if let Some(_) = Regex::new(r"Player .:").unwrap().captures(&line) {
+            cards.push(vec!())
+        } else if let Some(cap) = Regex::new(r"\d+").unwrap().captures(&line) {
+            cards.last_mut().unwrap().push(cap[0].parse::<usize>().unwrap())
+        }
+    }
+    (cards.remove(0), cards.remove(0))
+}
 
-fn parse98 (file: &str)  -> B98{
-    //let mut st = Strings::new();
+fn doit22a (cardsa: &mut Vec<usize>, cardsb: &mut Vec<usize>) -> usize {
+    loop {
+        if 0 == cardsa.len() || 0 == cardsb.len() { break }
+        let a = cardsa.remove(0);
+        let b = cardsb.remove(0);
+        if b < a  { cardsa.push(a); cardsa.push(b); }
+        else { cardsb.push(b); cardsb.push(a)}
+    }
+    let cards = if 0 == cardsa.len() { cardsb } else { cardsa };
+    cards.iter().rev().enumerate()
+    //.inspect( |e| print!("{:?} ", e) )
+    .fold(0, |r, (i, n)| r + (i+1)*n )
+}
 
-    file
-    .lines()
+fn doit22b (cardsa: &mut Vec<usize>, cardsb: &mut Vec<usize>) -> (usize, usize) {
+    let mut mema: HashSet<String> = HashSet::new();
+    let mut memb: HashSet<String> = HashSet::new();
+    loop {
+        if 0 == cardsa.len() || 0 == cardsb.len() { break } // Winner winner chicken dinner!
+        if !mema.insert(format!("{:?}", cardsa)) || // Maybe repeat hand...instant win for A
+           !memb.insert(format!("{:?}", cardsb)) { 
+            let ret = cardsa.iter().rev().enumerate().fold( 0, |r, (i, n)| r + (i+1)*n );
+            return ( ret, 0 );
+        }
+        let a = cardsa.remove(0); // Normal play
+        let b = cardsb.remove(0);
+        let winnerb =
+            if a <= cardsa.len() && b <= cardsb.len() {
+                let (a, b) = doit22b(&mut cardsa[0..a].to_vec(), &mut cardsb[0..b].to_vec());
+                a < b
+            } else {
+                a < b
+            };
+        if winnerb { cardsb.push(b); cardsb.push(a) } else { cardsa.push(a); cardsa.push(b); };
+    }
+    (cardsa.iter().rev().enumerate().fold( 0, |r, (i, n)| r + (i+1)*n ),
+     cardsb.iter().rev().enumerate().fold( 0, |r, (i, n)| r + (i+1)*n ) )
+} // 35055 (them 291)
+
+fn day22 () {
+    ::std::println!("== {}:{} ::{}::day22() ====", std::file!(), core::line!(), core::module_path!());
+    let file = read_to_string("data/input22.txt").unwrap();
+    let (cardsa, cardsb) = parse22(&file);
+    println!("Result 22a: {:?}", doit22a(&mut cardsa.clone(), &mut cardsb.clone())); // 33098 (them 306)
+    println!("Result 22b: {:?}", doit22b(&mut cardsa.clone(), &mut cardsb.clone())); // 35055 (them 291)
+}
+// Day 22
+////////////////////////////////////////////////////////////////////////////////
+// Day 23
+
+type V23 = Vec<usize>;
+
+fn parse23 (file: &str) -> V23 {
+    file.chars()
+    .map(|c| c.to_string().parse::<usize>().unwrap())
+    .collect::<V23>()
+}
+
+fn doit23a (mut v: V23) -> V23 {
+    for _ in 0..100 {
+        let n=v[0];
+        let sl = &v[1..=3];
+        let mut vv: V23 = vec!();
+
+        let mut nn = n; // The smaller number to look for, wraps up to 9
+        let pos = 5 +
+            loop {
+                nn = if nn == 1 { 9 } else { nn - 1 };
+                if let Some(pos) = v.iter().skip(4).position(|e| *e == nn) {
+                    break pos
+                }
+            };
+
+        let a = &v[4..pos];
+        let b = &v[pos..];
+
+        //println!("v = {:?} n={} sl={:?} pos={} a={:?} b={:?}", v, n, sl, pos, a, b);
+        vv.extend_from_slice(a);
+        vv.extend_from_slice(sl);
+        vv.extend_from_slice(b);
+        vv.push(n);
+        v=vv;
+
+    }
+    v
+}
+
+struct LL {
+    ll: Vec<usize>
+}
+
+impl LL {
+    fn next (&self, n: usize) -> usize { self.ll[n] }
+    fn link (&mut self, a:usize, b:usize) {
+        self.ll[a] = b;
+    }
+    /* fn get (&self, mut n:usize, c:usize) -> Vec<usize> {
+        let mut res = vec!();
+        for _ in 0..c {
+            n = self.ll[n];
+            res.push(n);
+        }
+        res 
+    }*/
+    // Linked List initially is 0 -> 1 -> ... -> (size-1) -> 0
+    fn new (size: usize, digits: &[usize]) -> LL {
+        let mut ll = (1..size).collect::<Vec<usize>>(); // Initial linked list
+        ll.push(0); // Cyclic
+
+        if 0 == digits.len() { return LL{ll}; }
+
+        // Re-order the start of the linked list.
+        let mut p = digits[0];
+        let mut n: usize;
+        for d in 1..digits.len() {
+            n = digits[d];
+            ll[p] = n;
+            p = n;
+        }
+
+        if digits.len() < size {
+            // Connect specified list to rest of ll
+            ll[p] = digits.len();
+            p = size-1;
+        }
+        // Make sure it's cyclic to the right number
+        n=digits[0];
+        ll[p] = n;
+
+        LL{ll}
+    }
+
+    // Print LL all pretty and stuff.  It's assumed the linked
+    // list contains some sequence of numbers from 0 to ll.len()-1
+    /*fn pp (&self,  mut n: usize) {
+        print!("{}", n);
+        for _ in 0..self.ll.len() {
+            n = self.ll[n];
+            print!(" {:?}", n); // ->
+        }
+    }*/
+}
+
+
+fn doit23b () -> usize {
+    let loopcount = 10_000_000;
+    //let loopcount = 100; 
+    let max = 1_000_000;
+    //let max = 9;
+    //let nums = [2,7,8,0,1,4,3,5,6]; // crab 389125467
+    let nums = [1,0,8,6,3,7,2,5,4]; // me   219748365
+    let first = nums[0];
+
+    let mut ll = LL::new(max, &nums);
+
+    let mut n = first; // Start at this number in list
+    for _ in 0..loopcount {
+        let skipa = ll.next(n); // Consider 3 skipped numbers and next number
+        let skipb = ll.next(skipa);
+        let skipc = ll.next(skipb);
+        let    nn = ll.next(skipc); // Next number (for next iteration)
+
+        // Look for destination number dd to insert the 3 skipped numbers after (and before ddd)
+        let mut dd = n;
+        loop {
+            dd = (dd+max-1) % max; // Might have to wrap around to biggest number
+            if dd==skipa || dd==skipb || dd==skipc { continue; }
+            break;
+        }
+        let ddd = ll.next(dd);
+
+        ll.link(n, nn); // Connect n to next number (skip over 3)
+        ll.link(dd, skipa); // Connect destination to slice
+        ll.link(skipc, ddd); // Connect slice to destination++
+        n = nn;
+    }
+    //ll.pp(1);
+    let num1 = ll.next(0) + 1;
+    let num2 = ll.next(num1-1)+ 1;
+    let res = num1 * num2;
+    //println!("  result {} * {} = {} [converted back to off-by-one]", num1, num2, res);
+    res
+}
+
+fn day23 () {
+    ::std::println!("== {}:{} ::{}::day23() ====", std::file!(), core::line!(), core::module_path!());
+    let file = "219748365"; //read_to_string("data/input23.txt").unwrap();
+    let v = parse23(&file);
+    println!("\nResult 23a: {:?}", doit23a(v)); // Result 23a: [3, 5, 8, 2, 7, 9, 6, 4, 1]  35827964
+    println!("\nResult 23b: {:?}", doit23b()); // Result 23b: 5403610688
+}
+// Day 23
+////////////////////////////////////////////////////////////////////////////////
+// Day 24
+
+type HS24 = Vec<Vec<i32>>;
+
+fn parse24 (file: &str) -> HS24 {
+    file.lines()
+    .map( |line| {
+        Regex::new(r"(e|ne|nw|w|sw|se)")
+        .unwrap()
+        .captures_iter(line)
+        .map( |cap| match &cap[0] { "ne" => 1, "nw" => 2, "w" => 3, "sw" => 4, "se" => 5, _ => 0 } )
+        .collect::<Vec<i32>>()
+    }).collect::<HS24>()
+}
+/*
+      / \ / \
+     |01 |11 |
+    / \ / \ /
+   |00 |10 |
+    \ / \ /
+
+*/
+
+fn hexmove ( (x,y):(i32, i32), dir:i32) -> (i32, i32) {
+    // even lines -> d1,d5 same X, d2,d4 --x
+    let m = 0==(y as i32 %2);
+    match dir {
+        0 => (x+1, y),
+        1 => if m {(x,y+1)} else {(x+1, y+1)},
+        2 => if m {(x-1,y+1)} else {(x, y+1)},
+        3 => (x-1, y),
+        4 => if m {(x-1,y-1)} else {(x, y-1)},
+        5 => if m {(x,y-1)} else {(x+1, y-1)},
+        _ => (x,y),
+    }
+}
+
+type Floor = HashMap<(i32, i32), i32>;
+
+fn genfloor24 (vv: &HS24) -> Floor {
+    let mut plot = util::Plotter::new();
+    let mut floor = Floor::new();
+    for v in vv {
+        let mut loc = (0, 0); // Current location
+        for d in v {
+            loc = hexmove(loc, *d);
+        }
+        *(floor.entry(loc).or_insert(0)) ^= 1;
+        plot.renderhash(&floor);
+    }
+    floor
+}
+
+// my black 0 is their white
+// my red 1   is their black
+fn doit24a (floor: &Floor) -> usize {
+    floor.iter().filter( |(_,v)| **v == 1 ).count() // how many are red?
+} // 332
+
+// alive/red with [0, 2,3,4,5,6] dies
+// dead/black with [2] borns
+fn doit24b (mut f1: Floor) -> usize {
+    let mut plot = util::Plotter::new();
+    for _ in 0..100 {
+        let locs = f1.clone();
+        for (loc,v) in locs { // For ever alive cell, inc count to my adjacent in next arena
+        if (v&1) != 1 { continue }
+        *(f1.entry(hexmove(loc, 0)).or_insert(0)) += 2;
+        *(f1.entry(hexmove(loc, 1)).or_insert(0)) += 2;
+        *(f1.entry(hexmove(loc, 2)).or_insert(0)) += 2;
+        *(f1.entry(hexmove(loc, 3)).or_insert(0)) += 2;
+        *(f1.entry(hexmove(loc, 4)).or_insert(0)) += 2;
+        *(f1.entry(hexmove(loc, 5)).or_insert(0)) += 2;
+        }
+        let mut f2 = Floor::new();
+        for (loc,c) in f1 { // Over every cell, determine next stat for next arena
+            if 3 <= c && c <= 5 {
+                f2.insert(loc, 1);
+            }
+        }
+        f1=f2;
+        plot.renderhash(&f1);
+        util::sleep(10);
+    }
+    doit24a(&f1)
+} 
+
+fn day24 () {
+    ::std::println!("== {}:{} ::{}::day24() ====", std::file!(), core::line!(), core::module_path!());
+    let file = read_to_string("data/input24.txt").unwrap();
+    let h = parse24(&file);
+    let floor = genfloor24(&h);
+    println!("Result 24a: {:?}", doit24a(&floor)); // 332
+    println!("Result 24b: {:?}", doit24b(floor)); // Result 24b: 3900
+}
+// Day 24
+////////////////////////////////////////////////////////////////////////////////
+// Day 25
+
+type V25 = Vec<u64>;
+
+fn parse25 (file: &str) -> V25 {
+    file.lines()
     .map( |line|
-         Regex::new(r"\n?([^:]+): (\d+)-(\d+) or (\d+)-(\d+)").unwrap().captures(line)
-    ).filter_map( |e| e )
-    .map( move |cap| (1 .. cap.len()).map( |i| cap[i].to_string() ).collect::<Vec<String>>() )
-    .inspect(db)
-    //.filter( |cap| &cap[1] != "" ) // all newlines become an empty capture for some reason
-    //.map( |cap| {
-    //    let line = cap[0].to_string();
-    //    line
-    //})
-    .count();
-    B98::new()
+        Regex::new(r"(.*)")
+        .unwrap()
+        .captures(line)
+        .unwrap()
+        [1]
+        .parse::<u64>().unwrap()
+    ).collect::<V25>()
 }
 
-fn doit98a (data: &B98) -> usize {
-    data.iter()
-    .inspect( db )
-    .count()
+fn computeloops25 (nn: u64) -> u64 {
+    let mut n = 1u64;
+    let sn = 7u64; // subject number
+    let d = 20201227u64;
+    let mut k = 0;
+    loop {
+        k += 1;
+        //print!("[{}] (n:{} * sn:{}) % d:{}", k, n , sn, d);
+        n = sn*n % d; // public key
+        //println!(" = n:{}", n);
+        if n == nn { break }
+    }
+    k
 }
 
-fn day98 () {
-    ::std::println!("== {}:{} ::{}::day98() ====", std::file!(), core::line!(), core::module_path!());
-    let s = Strings::new();
-    let file = read_to_string("data/input98.txt").unwrap();
-    let data = parse98(&file);
-    println!("Result 98a: {:?} {:?}", s, doit98a(&data));
-    //println!("Result 98b: {:?}", doit98b(&data));
+fn computekey25 (sn: u64, l: u64) -> u64 {
+    let mut n = 1u64;
+    let d = 20201227u64;
+    let mut k = 0;
+    loop {
+        k += 1;
+        //print!("[{}] (n:{} * sn:{}) % d:{}", k, n , sn, d);
+        n = (sn*n) % d; // public key
+        //println!(" = n:{}", n);
+        if l == k { break }
+    }
+    n
 }
-// Day 98
+
+fn doit25a (v: &V25) -> (u64, u64) {
+    let (a,b) = (v[0], v[1]);
+    let aloops = computeloops25(a);
+    let bloops = computeloops25(b);
+
+    let akey = computekey25(b, aloops);
+    let bkey = computekey25(a, bloops);
+
+    //print!("loop: a={} loops={}", a, aloops); println!("  key={}", akey);
+    //print!("loop: b={} loops={}", b, bloops); println!("  key={}", bkey); 
+    (akey, bkey) // should be same
+} // (10924063, 10924063)
+
+fn day25 () {
+    ::std::println!("== {}:{} ::{}::day25() ====", std::file!(), core::line!(), core::module_path!());
+    let file = "1526110\n20175123"; //read_to_string("data/input25.txt").unwrap();
+    let v = parse25(&file);
+    println!("Result 25a: {:?}", doit25a(&v));
+}
+// Day 25
 ////////////////////////////////////////////////////////////////////////////////
 // Main
 
@@ -1684,12 +2221,24 @@ pub fn main() {
     day19();
     // Result 19a: 129
     // Result 19b: 243
-    day99();
-    day98();
-    }
     day20();
-
+    //Result 20a: 107399567124539
+    //Result 20b: 1555 (If you're lucky)
+    day21();
+    //Result 21a: 2517
+    //Result 21b: rhvbn,mmcpg,kjf,fvk,lbmt,jgtb,hcbdb,zrb,
+    day22();
+    //Result 22a: 33098
+    //Result 22b: (35055, 0)
+    day23();
+    // Result 23a: [3, 5, 8, 2, 7, 9, 6, 4, 1]
+    // Result 23b: 5403610688
+    day24();
+    //Result 24a: 332
+    //Result 24b: 3900
+    day25();
+    // Result 25a: (10924063, 10924063)
+    }
 }
-
 // Main
 ////////////////////////////////////////////////////////////////////////////////

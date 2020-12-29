@@ -7,6 +7,8 @@ use ::std::{time::{SystemTime, Duration}, io, thread, fmt};
 use std::collections::{HashMap};
 use ::piston_window::*;
 
+pub fn ri32(m: u32) -> i32 { (::rand::random::<u32>() % m) as i32 }
+
 /// Sleep for a number of milliseconds
 /// 
 /// *©2020 Shrewm™*
@@ -252,19 +254,27 @@ pub fn new () -> Plotter {
             let mut pwin: ::piston_window::PistonWindow =
                 ::piston_window::WindowSettings::new("ASCIIRhOIDS", [320, 240])
                 .exit_on_esc(true).decorated(true).build().unwrap();
-            pwin.set_max_fps(120);
+            pwin.set_max_fps(1111);
             pwin
         },
         colors: {
             let mut h = HashMap::new();
             h.insert(0, [0.0, 0.0, 0.0, 1.0]);
-            h.insert(1, [1.0, 0.0, 0.0, 1.0]);
-            h.insert(2, [0.0, 1.0, 0.0, 1.0]);
-            h.insert(3, [1.0, 1.0, 0.0, 1.0]);
-            h.insert(4, [0.0, 0.0, 1.0, 1.0]);
-            h.insert(5, [1.0, 0.0, 1.0, 1.0]);
-            h.insert(6, [0.0, 1.0, 1.0, 1.0]);
-            h.insert(7, [1.0, 1.0, 1.0, 1.0]);
+            h.insert(1, [0.5, 0.0, 0.0, 1.0]);
+            h.insert(2, [0.0, 0.5, 0.0, 1.0]);
+            h.insert(3, [0.5, 0.3, 0.0, 1.0]);
+            h.insert(4, [0.0, 0.0, 0.5, 1.0]);
+            h.insert(5, [0.5, 0.0, 0.5, 1.0]);
+            h.insert(6, [0.0, 0.5, 0.5, 1.0]);
+            h.insert(7, [0.5, 0.5, 0.5, 1.0]);
+            h.insert(8, [0.2, 0.2, 0.2, 1.0]);
+            h.insert(9, [1.0, 0.0, 0.0, 1.0]);
+            h.insert(10,[0.0, 1.0, 0.0, 1.0]);
+            h.insert(11,[1.0, 1.0, 0.0, 1.0]);
+            h.insert(12,[0.0, 0.0, 1.0, 1.0]);
+            h.insert(13,[1.0, 0.0, 1.0, 1.0]);
+            h.insert(14,[0.0, 1.0, 1.0, 1.0]);
+            h.insert(15,[1.0, 1.0, 1.0, 1.0]);
             h
         },
         key: None,
