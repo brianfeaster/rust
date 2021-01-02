@@ -19,10 +19,10 @@ pretty_env_logger = "0.4.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0.57" 
 
-# Imports many useful things (all you need if doing simple 2d)
+# An all inclusive 2d graphics crate...
 piston_window = "*"
-
+# ...Or import many things for faster 2d performance.
 piston = "*"
-pistoncore-glutin_window = "*"
 piston2d-graphics = "*"
 piston2d-opengl_graphics = "*"
+pistoncore-glutin_window = "*"

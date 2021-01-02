@@ -2,11 +2,10 @@ use ::std::fmt;
 use ::std::ops::{Add, Mul, AddAssign, MulAssign};
 use ::std::time::{SystemTime};
 
-use ::graphics::{Graphics, DrawState};
 //use ::opengl_graphics::{GlGraphics, OpenGL, Colored, Textured, TexturedColor};
+use ::graphics::{Graphics, DrawState};
 use ::opengl_graphics::{GlGraphics, OpenGL, Colored, Textured};
 use ::piston::*;
-
 
 use ::glutin_window::{GlutinWindow};
 
@@ -410,7 +409,7 @@ fn xformperspectivecull (
     v: &V4
 ) -> [f64; 2] {
     let z = m.i*v[0] + m.j*v[1] + m.k*v[2] + m.l*v[3];
-    if z <= 0.0 {
+    if z <= 0.0 { // Cull if behind camera
         [::std::f64::NAN, ::std::f64::NAN]
     } else {
         let x = m.a*v[0] + m.b*v[1] + m.c*v[2] + m.d*v[3];
@@ -575,7 +574,7 @@ fn render_polygons (
         }
         ii += 0.01;
 
-        // Transform and cull this polygon
+        // Transform and cull this polygon, assumed square, split into 2 triangles
         let polys = poly.poly
             .iter()
             .map( |v| xformperspectivecull(&mat, &v) )
@@ -624,23 +623,21 @@ fn fun_piston() -> Result<usize, Box<dyn ::std::error::Error>>{
     //let mut glgfx = GlGraphics::from_pieces(colored, textured, texturedcolor);
     let mut glgfx = GlGraphics::new(ver);
 
-    life.gen_next();
+    //life.gen_next();
 
     while let Some(event) = events.next(&mut pwin) { match event {
         Event::Loop( Loop::Render(args) ) => {
             if life.tick % 15 == 0 { life.add_glider(0, 0); }
             //if life.tick % 100 == 0 { life.randomize(s); }
 
-            life.arena_xfer_dbuff();
+            //life.arena_xfer_dbuff();
             // Wait for threads to finish
-            for t in 0 .. life.threadvec.len() {
-                life.threadvec.pop().unwrap().join().unwrap();
-            }
-            life.gen_next();
-            let dbuff = &life.dbuffs.0.lock().unwrap();
+            //for t in 0 .. life.threadvec.len() { life.threadvec.pop().unwrap().join().unwrap(); }
+            let dbuff = life.gen_next().lock().unwrap();
+            //let dbuff = &life.dbuffs.0.lock().unwrap();
 
             let c = glgfx.draw_begin(args.viewport());
-                render_polygons(&c.draw_state, &mut glgfx, &mut state, &mut polys, 1.0, Some(dbuff));
+                render_polygons(&c.draw_state, &mut glgfx, &mut state, &mut polys, 1.0, Some(&dbuff));
             glgfx.draw_end();
 
             state.tick().printfps(true); // Increment frame count

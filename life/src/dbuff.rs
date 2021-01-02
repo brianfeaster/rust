@@ -1,5 +1,3 @@
-//#![allow(dead_code)]
-
 /// Delta Buffer.  Keeps track of last buffer for manual delta comparison
 
 #[derive(Debug)]
@@ -24,12 +22,9 @@ impl Dbuff {
         }
     }
 
-    pub fn state (&self) -> bool { 1 == self.tick & 1 }
+    fn state (&self) -> bool { 1 == self.tick & 1 }
 
-    pub fn buff (&self) -> &Vec<i32> {
-        if self.state() { &self.buffb } else { &self.buffa }
-    }
-    pub fn buffm (&mut self) -> &mut Vec<i32> {
+    fn buffm (&mut self) -> &mut Vec<i32> {
         if self.state() { &mut self.buffb } else { &mut self.buffa }
     }
     // Returns (buffCurrent, buffLats) for delta comparisoning
@@ -57,7 +52,6 @@ impl Dbuff {
         println!("{:?}", self);
         self
     }
-
 }
 
 /// //////////// Test bf: /////////////////

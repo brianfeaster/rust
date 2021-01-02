@@ -43,6 +43,7 @@ pub fn flush () {
     }
 }
 
+/// Closure which just returns duration since last evaluation.
 pub fn delta () -> impl FnMut()->Duration  {
     let mut epoch = SystemTime::now();
     move || -> Duration {
@@ -345,8 +346,8 @@ fn render (
     if eventrender.is_none() { return }
     let colors = &this.colors;
     this.pwin.draw_2d(
-         &eventrender.unwrap(),
-        | _c: Context, g: &mut G2d, _d: &mut GfxDevice | {
+        &eventrender.unwrap(),
+        | _c: Context,  g: &mut G2d,  _d: &mut GfxDevice | {
             let (xmin, xmax, ymin, ymax,  xsize, ysize) = bounding_box(&hm);
             clear(*colors.get(&0).unwrap_or(&[0.0, 0.0, 0.0, 1.0]), g);
             for ((x, y), c) in hm {
