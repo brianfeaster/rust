@@ -375,83 +375,6 @@ fn fun_goto (mut i: usize) -> usize {
     .unwrap()
 }
 
-////////////////////////////////////////////////////////////////////////////////
-fn newloc (mut loc:(i32,i32), dir:u32, amt:i32) -> (i32,i32) {
-    match dir%4 { 0 => loc.0 += amt, 1 => loc.1 += amt, 2 => loc.0 -= amt, 3 => loc.1 -= amt, _ => () };
-    loc
-}
-
-fn locmove (loc: &mut (i32,i32), dir: u32) {
-    match dir { 0 => loc.0 += 1, 1 => loc.1 += 1, 2 => loc.0 -= 1, 3 => loc.1 -= 1, _ => () };
-}
-
-fn locpeek (m: &::util::PlotterPoints, loc0: (i32,i32), d: u32) -> bool{
-    // Something in our way?
-    let loc = newloc(loc0, d, 1);
-    if m.get(&loc).is_some() { return true }
-    if m.get(&newloc(loc, d,   1)).is_some() { return true } // In front of new spot?
-    if m.get(&newloc(loc, d+3, 1)).is_some() { return true } // Right of new spot?
-    if m.get(&newloc(loc, d+1, 1)).is_some() { return true } // Left of new spot?
-
-    let loc = newloc(loc, d, 1);
-    if m.get(&newloc(loc, d+3, 1)).is_some() { return true } // Diagonal right of new spot
-    if m.get(&newloc(loc, d+1, 1)).is_some() { return true } // Diagonal left of new spot
-    false
-}
-
-pub fn ri32() -> i32 { ::rand::random::<i32>() }
-pub fn ru32() -> u32 { ::rand::random::<u32>() }
-pub fn rf32() -> f32 { ::rand::random::<f32>() }
-
-fn fun_maze() {
-    let mut pltr = ::util::Plotter::new(); 
-    let mut auto = true;
-    let mut loc = (0, 0);
-    let mut k :i32 = 1;  // color index
-    let mut kk :f32 = 0.1;
-    let mut dir = 0; // direction
-    pltr.insert(loc.0, loc.1, k); // Add pixel to hash
-    pltr.color(k, [1.0, 0.0, 0.0, 1.0]); // Add color to plotter
-    loop {
-        if 0 == ru32() % 1  {
-        match pltr.render().key {
-            Some('l') =>  { dir=0; auto = false; },
-            Some('k') =>  { dir=1; auto = false; },
-            Some('h') =>  { dir=2; auto = false; },
-            Some('j') =>  { dir=3; auto = false; },
-            Some(' ') =>  { auto = true; },
-            Some('q') =>  break,
-            _         => { if !auto { continue }  }
-        } }
-
-        let mut retry = 0;
-        let mut chooseNewColor = false;
-        loop {
-            if !auto { break }
-            // peek
-            dir = ru32() % 4;
-            if !locpeek(&pltr.hm, loc, dir) { break } // Can move in this direction
-            if retry < 1 { // Choose a new location in the maze if we can't walk in new direction
-                loc = *pltr.hm.iter().nth( ri32() as usize % pltr.hm.len() ).unwrap().0;
-                chooseNewColor = true;
-                continue
-            }
-            retry -= 1;
-        }
-
-        if chooseNewColor {
-            k += 1;
-            //pltr.color(k, [rf32()*0.5+0.5, rf32()*0.5+0.5, rf32()*0.5+0.5, 1.0]);
-            //pltr.color(k, [kk, 0.0, 0.0, 1.0]);
-            pltr.color(k, [rf32()*0.8+0.2, rf32()*0.8+0.2, rf32()*0.8+0.2, 1.0]);
-            kk += 0.001;
-            if 1.0 < kk { kk = 0.1 }
-        }
-        locmove(&mut loc, dir); pltr.insert(loc.0, loc.1, k);
-        //println!("pts{} clr{}", pltr.hm.len(), pltr.colors.len());
-    }
-}
-
 fn fun_cloned() {
     ::std::println!("== {}:{} ::{}::fun_cloned() ====", std::file!(), core::line!(), core::module_path!());
 
@@ -492,6 +415,5 @@ pub fn main() {
     //self::fun_fizzbuzz();
     //crate::fun::fun_overload();
     //println!("{:?}", fun_goto(5));
-    //fun_maze();
-    //fun_cloned();
+    fun_cloned();
 }

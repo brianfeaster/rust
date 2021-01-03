@@ -31,12 +31,15 @@ pub fn piston_draw_2d_gl (
     // Scale to NDC "Normalized device coordinate" (still need to translate -1,-1)
     let sx = 2.0 / whs.0 as f32;
     let sy = 2.0 / whs.1 as f32;
-    let black = [0.0, 0.0, 0.0, 1.0];
     //let blue = [rf32(), rf32(), rf32(), 0.5];
-    let blue = [0.0, 0.0, 1.0, 1.0];
-    let capacity = 6*17050;
-    let mut polysblack = Vec::with_capacity(capacity);
-    let mut polysblue = Vec::with_capacity(capacity);
+    let black = [0.0, 0.0, 0.0, 1.0];
+    let darkblue =  [0.0, 0.0, 0.5, 1.0];
+    let blue =  [0.0, 0.0, 1.0, 1.0];
+    let white = [1.0, 1.0, 1.0, 1.0];
+    let grey =  [0.4, 0.4, 0.4, 1.0];
+    let cyan =  [0.0, 5.0, 5.0, 1.0];
+    let green = [0.0, 1.0, 0.0, 1.0];
+    let red =   [1.0, 0.0, 0.0, 1.0];
     for i in 0..whs.2 {
         if ba[i] != bb[i] { // Compare buffer A with Buffer B for change in life state
             *deltas += 1;
@@ -45,32 +48,26 @@ pub fn piston_draw_2d_gl (
             let fy = row * sy - 1.0;
             let gx = fx + sx;
             let gy = fy + sy;
-            if 0 != ba[i] {
-                polysblue.push([fx,fy]);
-                polysblue.push([gx,fy]);
-                polysblue.push([gx,gy]);
-                polysblue.push([fx,fy]);
-                polysblue.push([gx,gy]);
-                polysblue.push([fx,gy]);
+            if 0< ba[i] {
+                gfx.tri_list( ds, &blue, |f| f(&[[fx,fy], [gx,fy], [gx,gy], [fx,fy], [gx,gy], [fx,gy]]) );
+                /*
+            } else if -1 == ba[i] {
+                gfx.tri_list( ds, &blue, |f| f(&[[fx,fy], [gx,fy], [gx,gy], [fx,fy], [gx,gy], [fx,gy]]) );
+            } else if 2 == ba[i] {
+                gfx.tri_list( ds, &white, |f| f(&[[fx,fy], [gx,fy], [gx,gy], [fx,fy], [gx,gy], [fx,gy]]) );
+            } else if -2 == ba[i] {
+                gfx.tri_list( ds, &grey, |f| f(&[[fx,fy], [gx,fy], [gx,gy], [fx,fy], [gx,gy], [fx,gy]]) );
+                */
             } else {
-                polysblack.push([fx,fy]);
-                polysblack.push([gx,fy]);
-                polysblack.push([gx,gy]);
-                polysblack.push([fx,fy]);
-                polysblack.push([gx,gy]);
-                polysblack.push([fx,gy]);
+                gfx.tri_list( ds, &black, |f| f(&[[fx,fy], [gx,fy], [gx,gy], [fx,fy], [gx,gy], [fx,gy]]) );
             }
         }
-        if capacity == polysblack.len() { gfx.tri_list( ds, &black, |f| f(&polysblack) ); polysblack.clear(); }
-        if capacity == polysblue.len()  { gfx.tri_list( ds, &blue,  |f| f(&polysblue) ); polysblue.clear(); }
         col += 1.0;
         if col == whs.0 as f32 { col = 0.0; row += 1.0; }
     }
-    if 0 < polysblack.len() { gfx.tri_list( ds, &black, |f| f(&polysblack) ); }
-    if 0 < polysblue.len()  { gfx.tri_list( ds, &blue, |f| f(&polysblue) ); }
 
     // Slowly erase screen.  Disable recBlack plots for cool effect.
-    if false { gfx.tri_list(ds, &[-1.0, -1.0, -1.0, 0.06], |f| f(&maketriangle()[..])); }
+    if false { gfx.tri_list(ds, &[-1.0, -1.0, -1.0, 0.04], |f| f(&maketriangle()[..])); }
 } // fn piston_draw_2d_callback
 
 fn maketriangle () -> [[f32;2];6] {
@@ -173,21 +170,11 @@ fn main_life_2d (w: usize, h: usize, cellsize: usize) -> bool {
     let mut events = Events::new( EventSettings::new().max_fps(1111) );
     let mut glgfx = GlGraphics::new(ver);
 
+    // Use this static viewport for rendering so window resizing doesn't affect normalized device coordinates.
     let viewport = Viewport {
         rect: [0 ,0, (winsize.0 * 2) as i32, (winsize.1 * 2) as i32],
         draw_size: [(winsize.0 * 2) as u32, (winsize.1 * 2) as u32],
         window_size: [winsize.0 as f64, winsize.1 as f64]};
-
-    /* Ghetto dump arena
-    for y in 0..24 {
-        println!("");
-        let row = aa[y].lock().unwrap();
-        for x in 0..80 {
-                print!("{}", 1-row[x]);
-        }
-    }
-    */
-
 
     //while let Some(event) = pwin.next() {
     while let Some(event) = events.next(&mut pwin) {
@@ -200,6 +187,7 @@ fn main_life_2d (w: usize, h: usize, cellsize: usize) -> bool {
                     Key::Space  => { s+=1; life.randomize(s);},
                     Key::C      => { life.clear(); },
                     Key::R      => { life.randomize(-1); },
+                    Key::G      => { life.add_glider(0,0); },
                     Key::Q |
                     Key::Escape => { pwin.set_should_close(true); },
                     _ => ()
@@ -246,28 +234,39 @@ fn main_life_ascii (w: usize, h: usize, loopcount: usize) {
         match &term.getc()[..] {
           "q" => break,
           "c" => { life.clear(); }
+          "g" => { life.add_glider(0,0); }
           " " => { life.randomize(8); }
           _ => ()
         }
         let mdbuff = life.gen_next().lock().unwrap();
-        let (ba, _bb) = mdbuff.buffs();
+        let (ba, bb) = mdbuff.buffs();
         watch.tick().mark(1.0);
         print!("\x1b[H Game of Life -- ASCII edition {}\x1b[0K", watch.fps);
-        ba.iter().enumerate().for_each( |(i, e)| {
+        bb.iter().zip(ba.iter()).enumerate().for_each( |(i, ba)| {
             if 0 == i % w { println!("") }
-            print!("{}", if *e == 0 { '.' } else { '@'});
+            match ba {
+                (0,0) => print!(" "), // dead
+                (0,1) => print!("o"), // born
+                (1,0) => print!("."), // died
+                (1,2) => print!("O"), // survived
+                (2,2) => print!("@"), // ancient
+                (2,0) => print!(","), // death
+                _ => print!("\x1b[31m\x1b[0m?"), // unknown
+            }
         } );
+        //util::sleep(1000);
     }
     term.done();
 }
 
 pub fn main () {
     ::std::println!("== {}:{} ::{}::main() ====", std::file!(), core::line!(), core::module_path!());
-    if true { main_life_2d(200, 200, 4); } else { main_life_ascii(140, 24, 10000); }
+    if true { main_life_2d(200, 200, 4); }
+    else { main_life_ascii(140, 24, 10000); }
 }
 
 /* TODO: message passing pipeline
-     Verify a thread crashing with a lock and subsequent threads receiving
+     Verify a thread crashing rith a lock and subsequent threads receiving
      invalid locks can communicate the new state (machine)/
   
 println!("{:?}", event);

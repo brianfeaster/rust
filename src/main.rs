@@ -7,6 +7,7 @@
 fn main () {
     ::std::println!("== {}:{} ::{}::main() ====", std::file!(), core::line!(), core::module_path!());
     //::adventofcode::main();
-    ::life::main();
+    //::life::main();
     //::main::main();
+    maze::main();
 }

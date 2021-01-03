@@ -4,10 +4,36 @@
 
 use ::std::io::{Write};
 use ::std::{time::{SystemTime, Duration}, io, thread, fmt};
-use std::collections::{HashMap};
+use ::std::collections::{HashMap};
+use ::std::collections::hash_map::{DefaultHasher};
+use ::core::hash::{BuildHasher};
 use ::piston_window::*;
+use ::rand::{*, rngs::*};
 
-pub fn ri32(m: u32) -> i32 { (::rand::random::<u32>() % m) as i32 }
+/// Pseudo Random Number Generator
+/// *©2021 Shrewm™*
+/// # Example
+/// ```
+/// use util::Prng;
+/// let gen = Prng::new(12349876);
+/// let f = gen.f32(100.0);
+/// let u = gen.u32(100);
+/// let i = gen.i32(100);
+/// let s = gen.usize(100);
+/// ```
+pub struct Prng {
+  rrr: StdRng
+}
+
+impl Prng {
+    pub fn new(seed:u64) -> Self {
+        Prng{rrr: <StdRng as SeedableRng>::seed_from_u64(seed)}
+    }
+    pub fn f32(&mut self, n: f32)     -> f32   { self.rrr.gen::<f32>() * n }
+    pub fn u32(&mut self, n: u32)     -> u32   { self.rrr.gen::<u32>() % n }
+    pub fn usize(&mut self, n: usize) -> usize { self.rrr.gen::<usize>() % n }
+    pub fn i32(&mut self, n: u32)     -> i32   { (self.rrr.gen::<u32>() % n) as i32 }
+}
 
 /// Sleep for a number of milliseconds
 /// 
@@ -239,7 +265,16 @@ impl fmt::Debug for Walk {
 
 // Plotter /////////////////////////////////////////////////////////////////////
 
-pub type PlotterPoints = HashMap<(i32, i32), i32>;
+pub struct DeterministicHasher { }
+
+impl BuildHasher for DeterministicHasher {
+    type Hasher = DefaultHasher;
+    fn build_hasher(&self) -> DefaultHasher {
+        DefaultHasher::new()
+    }
+}
+
+pub type PlotterPoints = HashMap<(i32, i32), i32, DeterministicHasher>;
 
 pub struct Plotter {
     pub pwin: ::piston_window::PistonWindow,
@@ -253,9 +288,9 @@ pub fn new () -> Plotter {
     Plotter {
         pwin: {
             let mut pwin: ::piston_window::PistonWindow =
-                ::piston_window::WindowSettings::new("ASCIIRhOIDS", [320, 240])
+                ::piston_window::WindowSettings::new("ASCIIRhOIDS", [640, 480])
                 .exit_on_esc(true).decorated(true).build().unwrap();
-            pwin.set_max_fps(1111);
+            pwin.set_max_fps(10);
             pwin
         },
         colors: {
@@ -279,7 +314,7 @@ pub fn new () -> Plotter {
             h
         },
         key: None,
-        hm: HashMap::new()
+        hm: HashMap::with_hasher(DeterministicHasher{})
     }
 } }
 
@@ -337,8 +372,8 @@ fn render (
                 eventrender = Some(event);
                 break
             },
-            Event::Input( Input::Button( ButtonArgs{state:_, button:Button::Keyboard(k), scancode:_} ), _ ) => {
-                this.key = Some(k as u8 as char);
+            Event::Input( Input::Button( ButtonArgs{state:s, button:Button::Keyboard(k), scancode:_} ), _ ) => {
+                this.key = if ButtonState::Press == s { Some(k as u8 as char) } else { None };
             },
             _ => { }
         }
@@ -352,7 +387,7 @@ fn render (
             clear(*colors.get(&0).unwrap_or(&[0.0, 0.0, 0.0, 1.0]), g);
             for ((x, y), c) in hm {
                 rectangle(
-                    *colors.get(c).unwrap_or(&[5.0, 5.0, 5.0, 1.0]),
+                    *colors.get(c).unwrap_or(&[1.0, 0.7, 0.5, 1.0]),
                     [*x as f64, *y as f64, 1.0, 1.0], // x,y, w,h
                     // The transform matrix to fit all points in window
                     [[2.0/xsize, 0.0, (xmax + xmin + 1.0) / -xsize ],
@@ -361,6 +396,7 @@ fn render (
             }
         }
     );
+    this.pwin.next();
 } // fn render
 
 /// Return bounding box for all x,y coordinates in the hashmap of points.

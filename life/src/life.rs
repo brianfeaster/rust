@@ -39,7 +39,7 @@ fn arena_new (width: i32, height: i32, s: i32) -> Arena  {
         .collect::<Vec<Mutex<Vec<_>>>>())
 }
 
-fn draw_glider (aa :& Arena, x :usize, y :usize) {
+fn draw_glider (aa :&Arena, x :usize, y :usize) {
     aa[y+0].lock().unwrap()[x+2] = 1;
     aa[y+1].lock().unwrap()[x+2] = 1;
     aa[y+2].lock().unwrap()[x+2] = 1;
@@ -67,6 +67,7 @@ fn arena_randomize (bb :&Arena, w :usize, h :usize, s: i32) {
     }
 }
 
+fn bi (n :i32) -> i32 { ( 0 < n) as i32 }
 /// Update/mutate the next gen of life in row 'bb' given the current
 /// row 'rb', the row above 'ra', and row below 'rc'.
 fn gen_new_rows (
@@ -77,11 +78,11 @@ fn gen_new_rows (
         bb :&mut Vec<i32>) {
     // Sum of columns window
     let mut a; // Not set initially
-    let mut b = ra[w-1] + rb[w-1] + rc[w-1]; // Last column of game field
-    let mut c = ra[0]   + rb[0]   + rc[0];   // First column of game field
+    let mut b = bi(ra[w-1]) + bi(rb[w-1]) + bi(rc[w-1]); // Last column of game field
+    let mut c = bi(ra[0])   + bi(rb[0])   + bi(rc[0]);   // First column of game field
     let first_col = c;
-    let mut alive = rb[0];
-    let mut next_alive = 0;
+    let mut state = bi(rb[0]);
+    let mut next_state = 0;
     let mut k = 0; // Column index
 
     for j in 0..w { // Along the row
@@ -89,10 +90,35 @@ fn gen_new_rows (
         k = k + 1; // next column index
         a = b;
         b = c;
-        c = if k==w { first_col } else { next_alive = rb[k]; ra[k] + rb[k] + rc[k] };
-        //// Set the next generation cell given neighbor count:  3 or (2 and alive)
-        bb[j] = ((( a + b + c << 1) as u32).wrapping_sub((alive+5)as u32) < 3) as i32;
-        alive = next_alive; // Consider next cell for next iteration
+        c = if k==w { first_col } else { next_state = rb[k]; bi(ra[k]) + bi(rb[k]) + bi(rc[k]) };
+        // Set the next generation cell alive if neighbor count 3 or 2 and currently alive.
+        // Derivation: Let neighbor_count=n and state 0=dead 1=alive:
+        //   Consider equation (n+state)<<1 - state
+        //   4+1<<1-1 = 9
+        //   3+1<<1-1 = 7  *
+        //   2+1<<1-1 = 5  *
+        //   1+1<<1-1 = 3
+        //   ...
+        //   4+0<<1-0 = 8
+        //   3+0<<1-0 = 6  *
+        //   2+0<<1-0 = 4
+        // When equation is 5,6,7 next gen is alive, so sub 5 and simply check value is < 3
+        let nxt = (( a + b + c << 1) as u32).wrapping_sub((bi(state)+5)as u32) < 3;
+        // The alive/dead states are split into:
+        // dead:  0:dead    was dead
+        //       -1:died    dead after 1/born
+        //       -2:croaked dead after 2
+        // alive: 1:born    alive for 1
+        //        2:old     alive past 1
+        bb[j] = match (state, nxt) {
+            (-2,false) => 0, (-1,false) => 0, (0,false) => 0,
+            (-2,true) => 1,  (-1,true) => 1,  (0,true) => 1,
+            (1,true) => 2, (2,true) => 2,
+                           (2,false) => -2,
+            (1,false) => -1,
+            (x,y) => {print!("WeirdState({},{}) ", x, y); 0},
+        };
+        state = next_state; // Consider next cell for next iteration
     }
 }
 
