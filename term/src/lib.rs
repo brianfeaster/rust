@@ -6,6 +6,7 @@ use ::std::io::{stdin, stdout, Read, Write};
 use ::std::sync::mpsc::{channel, Receiver, Sender};
 use ::std::thread;
 use piston_window::*;
+use ::libc::{termios};
 
 /// Implementation for "Pretty Printing" an object.
 pub trait PrettyPrint {
@@ -17,7 +18,7 @@ pub struct Term {
     cols: usize,
     rows: usize,
     count: usize,
-    original_termios: libc::termios,
+    original_termios: termios,
     original_fcntl: libc::c_int,
     keyin : Sender<String>,
     keyout : Receiver<String>,
@@ -135,12 +136,14 @@ impl Term {
             cols: 0,
             rows: 0,
             count: 0,
-            original_termios: libc::termios {
+            original_termios: termios {
                 c_iflag: 0,
                 c_oflag: 0,
                 c_cflag: 0,
                 c_lflag: 0,
-                c_cc: [0; 20],
+                #[cfg(target_os = "linux")] c_line: 0,
+                #[cfg(target_os = "linux")] c_cc: [0; 32],
+                #[cfg(target_os = "macos")] c_cc: [0; 20],
                 c_ispeed: 0,
                 c_ospeed: 0 },
             original_fcntl: 0,

@@ -9,5 +9,5 @@ fn main () {
     //::adventofcode::main();
     //::life::main();
     //::main::main();
-    maze::main();
+    ::maze::main();
 }
