@@ -1,15 +1,16 @@
 [package]
-name = "asteroids"
+name = "rust"
 version = "0.0.0"
 authors = ["b f <brianf@geemale.kom>"]
 edition = "2018"
 
 [workspace]
-members = [ "main", "life", "maze", "ipc", "util", "term" ]
-# "adventofcode", 
+members = [ "main", "life", "ipc", "util/plotter", "term" ]
+# "adventofcode", "util", "maze"
 
 [dependencies]
 main = { path = "main" }
 life = { path = "life" }
-maze = { path = "maze" }
+#maze = { path = "maze" }
+#util = { path = "util" }
 #adventofcode = { path = "adventofcode" }

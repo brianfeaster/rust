@@ -22,7 +22,7 @@ impl BuildHasher for DeterministicHasher {
 
 pub type HashMapDeterministic = HashMap<(i32, i32), i32, DeterministicHasher>;
 
-pub fn HashMapDeterministicNew () -> HashMapDeterministic {
+pub fn hashmapdeterministicnew () -> HashMapDeterministic {
     HashMap::with_hasher(DeterministicHasher{})
 }
 
@@ -39,19 +39,19 @@ pub fn HashMapDeterministicNew () -> HashMapDeterministic {
 /// let i = gen.i32(100);
 /// let s = gen.usize(100);
 /// ```
-pub struct Prng {
-  rrr: StdRng
-}
+pub struct Prng { prng: StdRng }
 
 impl Prng {
     pub fn new(seed:u64) -> Self {
-        Prng{rrr: <StdRng as SeedableRng>::seed_from_u64(seed)}
+        Prng{prng: <StdRng as SeedableRng>::seed_from_u64(seed)}
     }
-    pub fn f32(&mut self, n: f32)     -> f32   { self.rrr.gen::<f32>() * n }
-    pub fn u32(&mut self, n: u32)     -> u32   { self.rrr.gen::<u32>() % n }
-    pub fn usize(&mut self, n: usize) -> usize { self.rrr.gen::<usize>() % n }
-    pub fn i32(&mut self, n: u32)     -> i32   { (self.rrr.gen::<u32>() % n) as i32 }
+    pub fn f32  (&mut self, n: f32)     -> f32 {  self.prng.gen::<f32>()   * n }
+    pub fn u32  (&mut self, n: u32)     -> u32 {  self.prng.gen::<u32>()   % n }
+    pub fn usize(&mut self, n: usize) -> usize {  self.prng.gen::<usize>() % n }
+    pub fn i32  (&mut self, n: u32)     -> i32 { (self.prng.gen::<u32>()   % n) as i32 }
 }
+
+////////////////////////////////////////////////////////////////////////////////
 
 /// Sleep for a number of milliseconds
 /// 
@@ -66,6 +66,7 @@ pub fn sleep(s: u64) {
     thread::sleep(Duration::from_millis(s));
 }
 
+////////////////////////////////////////////////////////////////////////////////
 
 /// Flush STDOUT
 /// 
@@ -87,6 +88,8 @@ pub fn flush () {
     }
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
 /// Closure which just returns duration since last evaluation.
 pub fn delta () -> impl FnMut()->Duration  {
     let mut epoch = SystemTime::now();
@@ -96,6 +99,8 @@ pub fn delta () -> impl FnMut()->Duration  {
         epoch.duration_since(then).unwrap()
     }
 }
+
+////////////////////////////////////////////////////////////////////////////////
 
 #[derive (Debug)]
 pub struct Watch {
@@ -110,69 +115,52 @@ pub struct Watch {
 }
 
 impl Watch {
-    pub fn new() -> Self {
-        let now = SystemTime::now();
-        Self {
-            epoch:now, ticks: 0, 
-            time:now, tick: 0,
-            fps: 0.0
-        }
-    }
 
-    /// Duration since watch creation.
-    pub fn duration (&self) -> f32 {
-        SystemTime::now().duration_since(self.epoch).unwrap().as_secs_f32()
-    }
-
-    // Duration time since last mark.
-    pub fn period (&self) -> f32 {
-        SystemTime::now().duration_since(self.time).unwrap().as_secs_f32()
-    }
-
-    // Increase tick count for this period.
-    pub fn tick(&mut self) -> &mut Self {
-        self.tick += 1;
-        self
-    }
-
-    /// Update static fps and ticks values, reset period.
-    pub fn mark(&mut self, after:f32) -> Option<&mut Self> {
-        let now = SystemTime::now();
-        let secs = now.duration_since(self.time).unwrap().as_secs_f32();
-        if secs < after {
-            None
-        } else {
-            // Set current details
-            self.fps = self.tick as f32 / secs;
-            // Reset state
-            self.ticks += self.tick;
-            self.time = now;
-            self.tick = 0;
-            Some(self)
-        }
+pub fn new() -> Self {
+    let now = SystemTime::now();
+    Self {
+        epoch:now, ticks: 0, 
+        time:now, tick: 0,
+        fps: 0.0
     }
 }
 
-/*
-fn time_diff(from: SystemTime, to: SystemTime) -> i64 {
-    match to.duration_since(from) {
-        Ok(duration) => duration.as_millis() as i64,
-        Err(e) => -(e.duration().as_millis() as i64)
+/// Duration since watch creation.
+pub fn duration (&self) -> f32 {
+    SystemTime::now().duration_since(self.epoch).unwrap().as_secs_f32()
+}
+
+// Duration time since last mark.
+pub fn period (&self) -> f32 {
+    SystemTime::now().duration_since(self.time).unwrap().as_secs_f32()
+}
+
+// Increase tick count for this period.
+pub fn tick(&mut self) -> &mut Self {
+    self.tick += 1;
+    self
+}
+
+/// Update static fps and ticks values, reset period.
+pub fn mark(&mut self, after:f32) -> Option<&mut Self> {
+    let now = SystemTime::now();
+    let secs = now.duration_since(self.time).unwrap().as_secs_f32();
+    if secs < after {
+        None
+    } else {
+        // Set current details
+        self.fps = self.tick as f32 / secs;
+        // Reset state
+        self.ticks += self.tick;
+        self.time = now;
+        self.tick = 0;
+        Some(self)
     }
 }
-*/
 
-/*
-pub fn log(callername: &str, message: &str) {
-    let _now = SystemTime::now();
-    let _epoch = UNIX_EPOCH; // now + Duration::new(0,900000000);  // Cause match Err
-    let _timestamp = time_diff(_epoch, _now);
-    println!(
-        "\x1b[1;34m[{:?} {}]\x1b[0m - {}",
-        _timestamp, callername, message
-    );
-}
-*/
+} // impl Watch
+
+////////////////////////////////////////////////////////////////////////////////
 
 /// Bresenham's Line Drawing algorithm.  Cardinal steps are computed 
 /// given a 2d line segment.  This is an iterator struct.
@@ -187,44 +175,44 @@ pub struct Walk {
   e: i32
 }
 
-
 impl Walk {
-    pub fn new (start : &[f32],
-                end   : &[f32]) -> Self {
-        let mut x = end[0] as i32 - start[0] as i32;
-        let mut y = end[1] as i32 - start[1] as i32;
-        let ax = x.abs();
-        let ay = y.abs();
-        let st;
-        let inc;
 
-        if ay < ax { //  # Walk X and increment Y
-          if 0 < x {
-            if 0<y { st=0; inc=7; } else { st=0; inc=1; }
-          } else {
-            if 0<y { st=4; inc=5; } else { st=4; inc=3; }
-          }
-          y=ay; x=ax;
-        } else { // Walk Y and increment X
-          if 0 < y {
-            if 0<x { st=6; inc=7; } else { st=6; inc=5; }
-          } else {
-          if 0<x { st=2; inc=1; } else { st=2; inc=3; }
+pub fn new (start : &[f32],
+            end   : &[f32]) -> Self {
+    let mut x = end[0] as i32 - start[0] as i32;
+    let mut y = end[1] as i32 - start[1] as i32;
+    let ax = x.abs();
+    let ay = y.abs();
+    let st;
+    let inc;
+
+    if ay < ax { //  # Walk X and increment Y
+        if 0 < x {
+        if 0<y { st=0; inc=7; } else { st=0; inc=1; }
+        } else {
+        if 0<y { st=4; inc=5; } else { st=4; inc=3; }
         }
-          y=ax; x=ay;
-        }
+        y=ay; x=ax;
+    } else { // Walk Y and increment X
+        if 0 < y {
+        if 0<x { st=6; inc=7; } else { st=6; inc=5; }
+        } else {
+        if 0<x { st=2; inc=1; } else { st=2; inc=3; }
+    }
+        y=ax; x=ay;
+    }
 
-        y=y+y;
-        let e=y-x;
-        let yx=y-x-x;
+    y=y+y;
+    let e=y-x;
+    let yx=y-x-x;
 
-        return Walk{
-          start: [start[0], start[1]],
-          end: [end[0], end[1]],
-          st, inc, x, y, yx, e};
-    } // Walk::new
+    return Walk{
+        start: [start[0], start[1]],
+        end: [end[0], end[1]],
+        st, inc, x, y, yx, e};
+} // Walk::new
 
-}
+} // impl Walk
 
 // The cardinal direction -> cartesian vector translation table.
 const WALK_VECTORS : [[i32; 3];8]= [

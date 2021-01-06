@@ -33,13 +33,13 @@ pub fn piston_draw_2d_gl (
     let sy = 2.0 / whs.1 as f32;
     //let blue = [rf32(), rf32(), rf32(), 0.5];
     let black = [0.0, 0.0, 0.0, 1.0];
-    let darkblue =  [0.0, 0.0, 0.5, 1.0];
+    //let darkblue =  [0.0, 0.0, 0.5, 1.0];
     let blue =  [0.0, 0.0, 1.0, 1.0];
-    let white = [1.0, 1.0, 1.0, 1.0];
-    let grey =  [0.4, 0.4, 0.4, 1.0];
-    let cyan =  [0.0, 5.0, 5.0, 1.0];
-    let green = [0.0, 1.0, 0.0, 1.0];
-    let red =   [1.0, 0.0, 0.0, 1.0];
+    //let white = [1.0, 1.0, 1.0, 1.0];
+    //let grey =  [0.4, 0.4, 0.4, 1.0];
+    //let cyan =  [0.0, 5.0, 5.0, 1.0];
+    //let green = [0.0, 1.0, 0.0, 1.0];
+    //let red =   [1.0, 0.0, 0.0, 1.0];
     for i in 0..whs.2 {
         if ba[i] != bb[i] { // Compare buffer A with Buffer B for change in life state
             *deltas += 1;

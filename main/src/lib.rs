@@ -2,7 +2,7 @@
 
 // Bind the following modules to crate::
 mod asciirhoids;
-mod fun;
+mod learn;
 mod lag;
 mod matrix;
 
@@ -16,14 +16,11 @@ use ::std::{
     net::TcpListener,
     sync::mpsc::{channel, Receiver}};
 use ::piston_window::*;
-use ::serde::{Serialize, Deserialize};
-use ::serde_json::{self as sj, Value, from_str, to_string_pretty};
 use ::log::*;
 
 
 /// Create a random f32 number
 pub fn r32(m: f32) -> f32 { ::rand::random::<f32>() * m }
-
 /// Create a random f64 number
 pub fn r64(m: f32) -> f64 { ::rand::random::<f64>() * m as f64 }
 
@@ -227,84 +224,32 @@ pub fn mainGravity () {
                 break;
             }
         }
-        //tb.dump(); // Render the finalized terminal buffer.
+        tb.dump(); // Render the finalized terminal buffer.
 
-        //print!("\x1b[H\x1b[0;1m{:?} {:?}", entities[1].location, entities[1].velocity);
-        //print!("\x1b[H\x1b[0;1m{:?}", tick);
+        print!("\x1b[H\x1b[0;1m{:?} {:?}", entities[1].location, entities[1].velocity);
+        print!("\x1b[H\x1b[0;1m{:?}", tick);
         ::util::flush();
         ::util::sleep(10);
     }
     tb.done(); // Reset system terminal the way we found it
 }
 
+fn main_maze () {
+    ::std::println!("== {}:{} ::{}::main_maze() ====", std::file!(), core::line!(), core::module_path!());
 
-////////////////////////////////////////////////////////////////////////////////
-// Play with json
-//
+    let mut plotter = plotter::Plotter::new();
 
-#[derive(Debug)]
-pub enum MyError {
-    IoError(std::io::Error),
-    JsonError(json::Error),
-    SerdeJsonError(serde_json::Error)
-}
+    let bplotter =
+        Box::new( move |hm: &util::HashMapDeterministic| { plotter.renderhash(hm); } );
 
-impl From<std::io::Error>     for MyError { fn from(error: std::io::Error)    -> Self { MyError::IoError(error) }   }
-impl From<json::Error>        for MyError { fn from(error: json::Error)       -> Self { MyError::JsonError(error) } }
-impl From<serde_json::Error>  for MyError { fn from(error: serde_json::Error) -> Self { MyError::SerdeJsonError(error) } }
-
-fn mainJson () -> Result<usize, MyError> {
-    Ok(
-        json::parse(&fs::read_to_string("products.json")?)?
-        ["treats"]
-        .members()
-        .map( |e| println!("{}", e["name"].pretty(1)) )
-        .count()
-    )
-}
-
-// BF
-
-#[derive(Serialize, Deserialize, Debug)]
-struct BulkPricing {
-    amount : i32,
-    totalPrice : f32
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-struct Treat {
-    id: i32,
-    name: String,
-    imageURL: String,
-    price: f32,
-    bulkPricing: Option<BulkPricing>
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-struct Products {
-    treats :Vec<Treat>
-}
-
-fn mainJsonSerdes () -> Result<usize, MyError> {
-    let v :Products //HashMap<String, Vec<sj::Value>>
-        = sj::from_str(&fs::read_to_string("products.json")?)?;
-    Ok(
-        v.treats
-        .iter()
-        .map( |e| println!("{}", sj::to_string_pretty(&e.name).unwrap()))
-        .count()
-    )
+    ::maze::start(6, 100, bplotter);
 }
 
 pub fn main () {
-    //::pretty_env_logger::init();
     ::std::println!("== {}:{} ::{}::main() ====", std::file!(), core::line!(), core::module_path!());
-    //println!("{:?}", mainJson());
-    //println!("!!! {:?}", mainJsonSerdes());
-    //println!("map {:?}", ('🐘' .. '🐷').map(|x| (|x| x)(x)).collect::<Vec<char>>()); // type std::ops::RangeInclusive
-
     //crate::mainAsteroid(); // ??? Is there a symbol to explicitly reference the root module or is "crate" and other modules the only symbols?  A: There are only crates and they canonically start with :: and create is the crate representing the current crate.
     //crate::mainGravity();
-    crate::fun::main();
-    //crate::matrix::main();
+    //crate::main_maze();
+    //crate::learn::main();
+    crate::matrix::main();
 }

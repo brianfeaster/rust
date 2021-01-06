@@ -2,7 +2,7 @@ use ::std::{thread}; //io::Result;
 use ::std::net::{TcpListener, TcpStream};
 use ::std::{io::{self, prelude::*}}; // OR use std::io::{Write, Read}
 use ::std::collections::{HashMap};
-use ::util::{Prng, HashMapDeterministic, HashMapDeterministicNew};
+use ::util::{Prng, HashMapDeterministic, hashmapdeterministicnew};
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -37,11 +37,12 @@ fn locpeek (m: &HashMapDeterministic, loc0: (i32,i32), d: u32) -> bool {
     false
 }
 
-fn fun_maze(
-    prng: &mut Prng,
-    mut count: usize
+pub fn maze_create(
+    prng        :&mut Prng,
+    mut count   :usize,
+    bplotter    :&mut Box::<dyn FnMut(&HashMapDeterministic)>
 ) -> HashMapDeterministic {
-    let mut hm = HashMapDeterministicNew();
+    let mut hm = hashmapdeterministicnew();
     let manual = false;
     let mut loc = (0, 0);
     let mut k :i32 = 1;  // color index
@@ -92,8 +93,9 @@ fn fun_maze(
             break
         }
         hm.insert(loc, k);
-        //println!("pts{} clr{}", pltr.hm.len(), pltr.colors.len());
+        bplotter(&hm);
     }
+    bplotter(&hm);
     hm
 }
 
@@ -106,63 +108,64 @@ struct MazeWalker {
 }
 
 impl MazeWalker {
-    pub fn new (maze: &HashMapDeterministic, loc: (i32, i32)) -> MazeWalker {
-        let points :Points = maze.iter().map(|(k,v)|(*k,*v)).collect();
-        MazeWalker{ hm:points, loc:loc }
-    }
-    /// Update, if direction is valid, location and point (maze cell) color
-    /// Return 'n' when illegal, 'y' 's' or 'e' when legal
-    pub fn walk (&mut self, dir:u8) -> Option<u8> {
-        let d = match dir {
-            b'e'|b'E'|b'C'|0 => 0,
-            b'n'|b'N'|b'A'|1 => 1,
-            b'w'|b'W'|b'D'|2 => 2,
-            b's'|b'S'|b'B'|3 => 3,
-            _ => 42};
-        if 3 < d { return None } // Only 4 directions are valid
-        let loc2 = newloc(self.loc, d, 1);
-        let k = self.hm.get(&loc2)?;
-        self.loc = loc2;
-        Some(match *k {
-            14 => b'e',
-            2  =>  b's',
-            _  => { self.hm.insert(loc2, 3); b'y' }
-        })
-    }
-    pub fn plot (&self) {
-        let size = 15;
-        print!(" \x1b7\x1b[15A\r"); // back, save, move
-        for y in (0..size).rev() {
-            for x in 0..size {
-                if x==size/2 && y == size/2
-                    { print!("\x1b[1;34m@\x1b[0m") }
-                else if let Some(c) = self.hm.get( &(x+self.loc.0-size/2, y+self.loc.1-size/2) )
-                    { print!("\x1b[3{:?}m#\x1b[0m", c) }
-                else
-                    { print!(".") }
-            }
-            println!("");
-        }
-        print!("\x1b8"); // restore, forward, space
-        util::flush();
-    }
+
+pub fn new (maze: &HashMapDeterministic, loc: (i32, i32)) -> MazeWalker {
+    let points :Points = maze.iter().map(|(k,v)|(*k,*v)).collect();
+    MazeWalker{ hm:points, loc:loc }
 }
 
-fn walker (
-    mut mwalker: MazeWalker,
+/// Update, if direction is valid, location and point (maze cell) color
+/// Return 'n' when illegal, 'y' 's' or 'e' when legal
+pub fn walk (&mut self, dir:u8) -> Option<u8> {
+    let d = match dir {
+        b'e'|b'E'|b'C'|0 => 0,
+        b'n'|b'N'|b'A'|1 => 1,
+        b'w'|b'W'|b'D'|2 => 2,
+        b's'|b'S'|b'B'|3 => 3,
+        _ => 42};
+    if 3 < d { return None } // Only 4 directions are valid
+    let loc2 = newloc(self.loc, d, 1);
+    let k = self.hm.get(&loc2)?;
+    self.loc = loc2;
+    Some(match *k {
+        14 => b'e',
+        2  =>  b's',
+        _  => { self.hm.insert(loc2, 3); b'y' }
+    })
+}
+pub fn plot (&self) {
+    let size = 15;
+    print!(" \x1b7\x1b[15A\r"); // back, save, move
+    for y in (0..size).rev() {
+        for x in 0..size {
+            if x==size/2 && y == size/2
+                { print!("\x1b[1;34m@\x1b[0m") }
+            else if let Some(c) = self.hm.get( &(x+self.loc.0-size/2, y+self.loc.1-size/2) )
+                { print!("\x1b[3{:?}m#\x1b[0m", c) }
+            else
+                { print!(".") }
+        }
+        println!("");
+    }
+    print!("\x1b8"); // restore, forward, space
+    util::flush();
+}
+
+fn walkloop (
+    &mut self,
     stream: &mut TcpStream
 ) -> io::Result<&'static str> {
     let mut buff :[u8;1] = [0; 1];
     let mut byte_count;
     print!("{}", "\n".repeat(15));
     loop {
-        mwalker.plot(); // Render maze
+        self.plot(); // Render maze
 
         byte_count = stream.read(&mut buff)?; // Read a byte from player
         if 0==byte_count { return Ok("read 0 bytes expected 1") }
         if buff[0]==b'q' { return Ok("read q") }
 
-        let result_byte = mwalker.walk(buff[0]).unwrap_or(b'n'); // Update maze walker's state
+        let result_byte = self.walk(buff[0]).unwrap_or(b'n'); // Update maze walker's state
         let result_color = match result_byte { b'y'=>1, b's'=>2, b'e'=>3, _ =>7 };
 
         let token = format!("{:?}", buff[0] as char);
@@ -174,25 +177,31 @@ fn walker (
     }
 }
 
-fn server (maze: &mut HashMapDeterministic) -> io::Result<&'static str> {
+} // impl MazeWalker
+
+pub fn server (
+    maze    :&mut HashMapDeterministic
+) -> io::Result<&'static str> {
     let listener :TcpListener = TcpListener::bind("127.0.0.1:1777")?;
     for stream in listener.incoming() { // This blocks
         let mut stream = stream?;
-        let walker = MazeWalker::new(&maze, (0,0));
+        let mut walker = MazeWalker::new(&maze, (0,0));
         thread::spawn( move || {
-            println!(" Maze Walker: {:?}", self::walker(walker, &mut stream));
+            println!(" Maze Walker Loop: {:?}", walker.walkloop(&mut stream));
             println!(" Stream shutdown: {:?}", stream.shutdown(std::net::Shutdown::Both));
         });
     }
     Ok("Server iterator finite expected infinite")
 }
 
-pub fn main () {
-    ::std::println!("== {}:{} ::{}::main() ====", std::file!(), core::line!(), core::module_path!());
-    util::sleep(100);
-    // 6 100
-    // 4 300
-    let mut prng = Prng::new(6); // Random number generator
-    let mut maze :HashMapDeterministic = fun_maze(&mut prng, 100);
-    println!("{:?}", server(&mut maze));
+pub fn start (
+    seed: u64,
+    size: usize,
+    mut bplotter: Box::<dyn FnMut(&HashMapDeterministic)>
+) {
+    ::std::println!("== {}:{} ::{}::start() ====", std::file!(), core::line!(), core::module_path!());
+    let mut prng = Prng::new(seed); // Random number generator
+    let mut maze = maze_create(&mut prng, size, &mut bplotter);
+    let error = server(&mut maze);
+    println!("{:?}", error);
 }

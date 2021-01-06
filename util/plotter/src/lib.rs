@@ -1,16 +1,11 @@
 //! Piston based point plotter.
 //!
 //! Create/render points->color hash maps.
+//! Doubles as a free HashMap although you can pass your own to render.
 //! 
 use ::std::collections::{HashMap};
-use ::std::collections::hash_map::{DefaultHasher};
-use ::core::hash::{BuildHasher};
 use ::piston_window::*;
 use ::util::*;
-
-/// Plotter doubles as a free HashMap although you can render your own.
-
-pub type PlotterPoints = HashMap<(i32, i32), i32, DeterministicHasher>;
 
 pub struct Plotter {
     pub pwin: PistonWindow,
@@ -27,7 +22,7 @@ pub fn new () -> Plotter {
             let mut pwin: PistonWindow =
                 WindowSettings::new("ASCIIRhOIDS", [640, 480])
                 .exit_on_esc(true).decorated(true).build().unwrap();
-            pwin.set_max_fps(10);
+            pwin.set_max_fps(1111);
             pwin
         },
         colors: {
@@ -79,7 +74,7 @@ pub fn render (&mut self) -> &mut Self {
 }
 
 /// Render an external set of points.
-pub fn renderhash (&mut self, pts:&PlotterPoints) -> &mut Self {
+pub fn renderhash (&mut self, pts:&HashMapDeterministic) -> &mut Self {
     _render(self, Some(pts));
     self
 }
@@ -87,32 +82,44 @@ pub fn renderhash (&mut self, pts:&PlotterPoints) -> &mut Self {
 /// Compare char with last key pressed
 pub fn iskey (&self, c:char) -> bool {
     match self.key {
-        Some(k) => k == c,
+        Some(k) => k==c,
         _ => false
     }
+}
+
+pub fn key (&mut self) -> Option<char> {
+    let ret = self.key;
+    self.key = None;
+    ret
 }
 
 } // impl Plotter
 
 fn _render (
     this: &mut Plotter,
-    hmo: Option<&PlotterPoints>
+    hmo: Option<&HashMapDeterministic>
 ) {
-    this.key = None; // Clear last keypressed
+    //this.key = None; // Clear last keypressed
     // Plot either the internal or an external hashmap
-    let hm = if let Some(hm) = hmo { hm } else { &this.hm };
-    if 0 == hm.len() { return } // No pixels, no rendy.
+    let hm = hmo.unwrap_or(&this.hm);
+    if 0 == hm.len() { return } // No pixels, so skip rendering
     let mut eventrender :Option<Event> = None;
     while let Some(event) = this.pwin.next() {
         match event {
             Event::Loop(Loop::Render(_args)) => {
-                eventrender = Some(event);
+                eventrender = Some(event); // Handle rendering after this loop
                 break
             },
-            Event::Input( Input::Button( ButtonArgs{state:s, button:Button::Keyboard(k), scancode:_} ), _ ) => {
-                this.key = if ButtonState::Press == s { Some(k as u8 as char) } else { None };
+            Event::Input(
+                Input::Button(
+                    ButtonArgs{ state, button:Button::Keyboard(k), scancode:_ }
+                ),
+                _optiontimestamp) => {
+                if state == ButtonState::Press {
+                    this.key = Some(k as u8 as char)
+                }
             },
-            _ => { }
+            _ => ()
         }
     }
     if eventrender.is_none() { return }
@@ -120,11 +127,11 @@ fn _render (
     this.pwin.draw_2d(
         &eventrender.unwrap(),
         | _c:Context,  g:&mut G2d,  _d:&mut GfxDevice | {
-            let (xmin, xmax, ymin, ymax,  xsize, ysize) = bounding_box(&hm);
+            let bb = bounding_box(&hm);
             // The transform matrix to fit all points in window
             let bounding_box_xform =
-                [[2.0/xsize, 0.0,       (xmax + xmin + 1.0) / -xsize ],
-                 [0.0,       2.0/ysize, (ymax + ymin + 1.0) / -ysize ]];
+                [[2.0/bb.width, 0.0,           (bb.x.max + bb.x.min + 0.0) / -bb.width ],
+                 [0.0,          2.0/bb.height, (bb.y.max + bb.y.min + 0.0) / -bb.height ]];
             clear(*colors.get(&0).unwrap_or(&[0.0, 0.0, 0.0, 1.0]), g);
             for ((x, y), c) in hm {
                 rectangle(
@@ -139,18 +146,30 @@ fn _render (
     this.pwin.next();
 } // fn _render
 
-/// Return bounding box for all x,y coordinates in the hashmap of points.
-fn bounding_box (hm: &PlotterPoints) -> (f64, f64, f64, f64, f64, f64) {
-    let (xmin, xmax, ymin, ymax) =
+////////////////////////////////////////////////////////////////////////////////
+// Return bounding box for x,y coordinates in the hashmap of points.
+
+struct MinMax { min:f64, max:f64 }
+struct BoundingBox { x:MinMax, y:MinMax, width:f64, height:f64 }
+
+fn bounding_box (hm: &HashMapDeterministic) -> BoundingBox {
+    let (xmin, mut xmax, ymin, mut ymax) =
         hm.iter().fold(
             (std::i32::MAX, std::i32::MIN, std::i32::MAX, std::i32::MIN),
             | mut r, ((x,y),_) | {
-                if *x < r.0 { r.0 = *x };
-                if r.1 < *x { r.1 = *x };
-                if *y < r.2 { r.2 = *y };
-                if r.3 < *y { r.3 = *y };
+                if *x  < r.0 { r.0 = *x };
+                if r.1 < *x  { r.1 = *x };
+                if *y  < r.2 { r.2 = *y };
+                if r.3 < *y  { r.3 = *y };
                 r
             }
         );
-    (xmin as f64, xmax as f64, ymin as f64, ymax as f64, (xmax-xmin) as f64, (ymax-ymin) as f64)
+    xmax += 1;
+    ymax += 1;
+    BoundingBox{
+         x      :MinMax{min:xmin as f64, max:xmax as f64},
+         y      :MinMax{min:ymin as f64, max:ymax as f64},
+         width  :(xmax-xmin) as f64,
+         height :(ymax-ymin) as f64
+    }
 }

@@ -5,9 +5,17 @@ use std::collections::{HashMap, HashSet};
 use ::std::{fs, thread};
 use ::std::ops::{Range};
 use ::piston_window::*;
+use ::serde::{Serialize, Deserialize};
+use ::serde_json::{self as sj, Value, from_str, to_string_pretty};
 // Local
 use ::util::{self};
 use ::term::{Term};
+
+/// Create a random f32 number
+pub fn r32(m: f32) -> f32 { ::rand::random::<f32>() * m }
+
+/// Create a random f64 number
+pub fn r64(m: f32) -> f64 { ::rand::random::<f64>() * m as f64 }
 
 fn fun_split_helper (v :&mut Vec<i32>) {
     v[0] = 200;
@@ -18,7 +26,7 @@ fn fun_split_helper (v :&mut Vec<i32>) {
 /// fun_split
 /// Play around with Rust basics that split a string into substring.
 pub fn fun_split() {
-    ::std::println!("== {}:{} ::{}::fun_split() ====", std::file!(), core::line!(), core::module_path!());
+    println!("== {}:{} ::{}::fun_split() ====", std::file!(), core::line!(), core::module_path!());
     println!(
         "[fun_string] {:?}",
         String::from("long live  donut ").split(" ").map(|s| s.trim()).collect::<Vec<&str>>()
@@ -44,6 +52,7 @@ pub fn fun_split() {
 }
 
 fn fun_tuples() {
+    println!("== {}:{} ::{}::fun_tuples() ====", std::file!(), core::line!(), core::module_path!());
     let s = (11, { println!("fun_tuples"); 22 });
     println!( "Tuple.? = {:?}", loop { break if true { s.0 } else { s.1 }; });
 }
@@ -51,6 +60,7 @@ fn fun_tuples() {
 type Vi32 = Vec<i32>;
 
 fn fun_map() {
+    println!("== {}:{} ::{}::fun_map() ====", std::file!(), core::line!(), core::module_path!());
     let r = (17..=20).collect::<Vi32>();
     //println!("{:?}", &r); // Can't move this after the for loop
     for i in &r { println!("{:?}", i); }
@@ -217,8 +227,15 @@ pub fn fun_read_poly_file (filename : &str) -> Vec::<Cpoint> {
     hvcp
 }
 
-/// Create a random f64 number
-pub fn r64(m: f32) -> f64 { ::rand::random::<f64>() * m as f64 }
+fn fun_log () {
+    ::pretty_env_logger::init();
+    ::std::println!("== {}:{} ::{}::fun_log() ====", std::file!(), core::line!(), core::module_path!());
+    ::log::trace!("A fun info log {:?} RUST_LOG=trace", 1);
+    ::log::debug!("A fun info log {:?} RUST_LOG=debug", 1);
+    ::log::info!("A fun info log {:?} RUST_LOG=info", 1);
+    ::log::warn!("A fun warn log {:?} RUST_LOG=warn", 2);
+    ::log::error!("A fun error log {:?} RUST_LOG=error", 3);
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 // Play with Graphics
@@ -293,7 +310,7 @@ pub fn fun_piston_walk() {
         .decorated(true)
         .build()
         .unwrap();
-    let mut kolor = [crate::r32(1.0), crate::r32(1.0), crate::r32(1.0), 1.0];
+    let mut kolor = [r32(1.0), r32(1.0), r32(1.0), 1.0];
     let mut next = mb.next().unwrap();
 
     while let Some(event) = pwindow.next() {
@@ -315,7 +332,7 @@ pub fn fun_piston_walk() {
         );
         //util::sleep(100);
         if 1 == count % 2 {
-            kolor = [crate::r32(1.0), crate::r32(1.0), crate::r32(1.0), 1.0];
+            kolor = [r32(1.0), r32(1.0), r32(1.0), 1.0];
             next = mb.next().unwrap();
             //pwindow.set_title(format!("{:?}", kolor));
         }
@@ -359,6 +376,7 @@ fn fun_overload() {
     m *= 11.0;
     println!("{:?}", m);
 }
+
 ////////////////////////////////////////////////////////////////////////////////
 
 fn fun_goto (mut i: usize) -> usize {
@@ -398,12 +416,84 @@ fn fun_cloned() {
     println!("{:?}", vh);
 }
 
+fn fun_emojis () {
+    println!("map {:?}",
+        ('🐘' ..= '🐷') // std::ops::RangeInclusive
+        .map(|x| (|x| x)(x))
+        .collect::<Vec<char>>()
+    );
+}
+
 ////////////////////////////////////////////////////////////////////////////////
+// Play with json
+//
+
+#[derive(Debug)]
+pub enum MyError {
+    IoError(std::io::Error),
+    JsonError(json::Error),
+    SerdeJsonError(serde_json::Error)
+}
+
+impl From<std::io::Error>     for MyError { fn from(error: std::io::Error)    -> Self { MyError::IoError(error) }   }
+impl From<json::Error>        for MyError { fn from(error: json::Error)       -> Self { MyError::JsonError(error) } }
+impl From<serde_json::Error>  for MyError { fn from(error: serde_json::Error) -> Self { MyError::SerdeJsonError(error) } }
+
+fn mainJson () -> Result<usize, MyError> {
+    Ok(
+        json::parse(&fs::read_to_string("products.json")?)?
+        ["treats"]
+        .members()
+        .map( |e| println!("{}", e["name"].pretty(1)) )
+        .count()
+    )
+}
+
+// BF
+
+#[derive(Serialize, Deserialize, Debug)]
+struct BulkPricing {
+    amount : i32,
+    totalPrice : f32
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct Treat {
+    id: i32,
+    name: String,
+    imageURL: String,
+    price: f32,
+    bulkPricing: Option<BulkPricing>
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct Products {
+    treats :Vec<Treat>
+}
+
+fn mainJsonSerdes () -> Result<usize, MyError> {
+    let v :Products //HashMap<String, Vec<sj::Value>>
+        = sj::from_str(&fs::read_to_string("products.json")?)?;
+    Ok(
+        v.treats
+        .iter()
+        .map( |e| println!("{}", sj::to_string_pretty(&e.name).unwrap()))
+        .count()
+    )
+}
+
+fn fun_json () {
+    println!("{:?}", mainJson());
+    println!("!!! {:?}", mainJsonSerdes());
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 pub fn main() {
     ::std::println!("== {}:{} ::{}::main() ====", std::file!(), core::line!(), core::module_path!());
     //self::fun_split();
-    //fun_tuples();
-    //fun_map();
+    //super::fun::fun_tuples();
+    //crate::fun::fun_map();
     //let mut term = Term::new();
     //fun_write_non_block(&mut term);
     //fun_wait_q_press(&term);
@@ -411,9 +501,12 @@ pub fn main() {
     //fun_walk_iter();
     //fun_read_file_pair();
     //for e in fun_read_poly_file("data/ship.dat") { println!("{:?}", e); }
+    //fun_log();
     //fun_piston_walk();
-    //self::fun_fizzbuzz();
-    //crate::fun::fun_overload();
+    //fun_fizzbuzz();
+    //fun_overload();
     //println!("{:?}", fun_goto(5));
-    fun_cloned();
+    //fun_cloned();
+    //fun_emojis();
+    //fun_json();
 }

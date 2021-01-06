@@ -18,7 +18,7 @@ use crate::lag::{self, Shape, EntityCast, Entity, Entities};
 fn load_polygon (filename :&str) -> (Vec<[f32; 4]>, Vec<i32>, Vec<i32>) {
 
     let mut points = 
-        crate::fun::fun_read_poly_file(filename).into_iter().map( |p|
+        crate::learn::fun_read_poly_file(filename).into_iter().map( |p|
             [p.2, p.1 ,0.0, 1.0]
         ).collect::<Vec<[f32; 4]>>();
     let mut colors :Vec<i32> = vec!();
