@@ -15,6 +15,11 @@ const CF2 :&str = "\x1b[32m"; // Color Foreground 2
 
 #[derive(Debug)]
 struct State {
+    power: bool,
+    randomize: bool,
+    sleep: bool,
+    clear: bool,
+    keyboard_movement_style: bool,
     W:f64, H:f64,
     x:f64, y:f64, z:f64,
     mx: f64, my: f64,
@@ -26,6 +31,11 @@ struct State {
 impl State {
     fn new() -> State {
         State{
+            power:true,
+            randomize:false,
+            sleep:false,
+            clear:false,
+            keyboard_movement_style:false,
             W:1400.0, H:700.0, // window
             x:0.0, y:0.0, z:0.0, // player
             mx:0.0, my:0.0, // mouse
@@ -495,15 +505,15 @@ fn make_polys() -> Vec<Orn> {
       } // x
     } // y
 
-    /*
+    // X-mas tree
     let mut y = 0.0; // height of square to play square along the cone
     for i in 0..1000 {
         let mut mat = M4_ID;
+        mat += [0.0,  0.5,  0.0];
         y += 0.1 - crate::r64(i as f32) / 50000.0;
         mat *= Rot::RotY(crate::r64(6.28));
         mat += [0.0,  -y/100.0,  (2.0+i as f64/40.0)/100.0];
-        mat *= 0.005;
-        scalePost(&mut mat, [0.2, 0.2, 0.2]);
+        mat *= 0.001;
         polys.push(
             Orn {
                 poly: vec![
@@ -518,9 +528,6 @@ fn make_polys() -> Vec<Orn> {
             } // Orn
         );
     }
-    */
-
-
     polys
 }
 
@@ -538,7 +545,7 @@ fn render_polygons (
     let mut ii = 0.0f64; // Local counter for animation
 
     // New global transform matrix, order matters.
-    let mut gmat = M4_ID; // * [1.0, 1.0, 1.0]; // Must scale for perspective
+    let mut gmat = M4_ID; // * [1.0, 1.0, 1.0]; // Scale for perspective
     gmat *= Rot::RotX(state.my); // Must roate camera direction
     gmat *= Rot::RotY(-state.mx);
     gmat += [state.x, state.z, state.y]; // Must move camera location
@@ -597,6 +604,46 @@ fn render_polygons (
     } } // if poly.alive // for poly
 } // fn render
 
+fn handle_keyboard_movement (
+    state: &mut State,
+    k: &Key
+) {
+    if state.keyboard_movement_style {
+        match k {
+            Key::W => { state.x += -0.05 * (state.mx).sin();  state.y += -0.05 * (state.mx).cos() },
+            Key::S => { state.x +=  0.05 * (state.mx).sin();  state.y +=  0.05 * (state.mx).cos() },
+            Key::A => { state.x +=  0.05 * (state.mx+1.570796).sin(); state.y +=  0.05 * (state.mx+1.570796).cos() },
+            Key::D => { state.x +=  0.05 * (state.mx-1.570796).sin(); state.y +=  0.05 * (state.mx-1.570796).cos() },
+            _ => ()
+        }
+    } else {
+        match k {
+            Key::S => { state.x += -0.05 * (state.mx).sin();  state.y += -0.05 * (state.mx).cos() },
+            Key::A => { state.x +=  0.05 * (state.mx).sin();  state.y +=  0.05 * (state.mx).cos() },
+            Key::D => { state.x +=  0.05 * (state.mx+1.570796).sin(); state.y +=  0.05 * (state.mx+1.570796).cos() },
+            Key::F => { state.x +=  0.05 * (state.mx-1.570796).sin(); state.y +=  0.05 * (state.mx-1.570796).cos() },
+            Key::W => { state.keyboard_movement_style = true; handle_keyboard_movement(state, k); },
+            _ => ()
+        }
+    }
+}
+
+fn handle_keyboard (
+    state:&mut State,
+    k: &Key
+) {
+    handle_keyboard_movement(state, k);
+    match k {
+        Key::Q => state.power = false,
+        Key::V => { state.z -=  0.05 },
+        Key::C => { state.z +=  0.05 },
+        Key::E => state.clear = true,
+        Key::R => state.randomize = true,
+        Key::Space => state.sleep = true,
+        _ => ()
+    }
+}
+
 // REPL ////////////////////////////////////////////////////////////////////////
 
 fn fun_piston() -> Result<usize, Box<dyn ::std::error::Error>>{
@@ -626,52 +673,42 @@ fn fun_piston() -> Result<usize, Box<dyn ::std::error::Error>>{
         window_size: [state.W as f64, state.H as f64]
     };
 
-    //life.clear();
-
     while let Some(event) = events.next(&mut pwin) { match event {
+        Event::Input( Input::Button( ButtonArgs{state:s, button:Button::Keyboard(k), scancode:_} ), _ ) => {
+            handle_keyboard(&mut state, &k);
+            if !state.power { pwin.set_should_close(true); }
+            if state.randomize { life.randomize(state.s()); state.randomize = false; }
+            if state.sleep { ::util::sleep(500); state.sleep = false; }
+            if state.clear { life.clear(); state.clear = false; }
+        },
+        Event::Input( Input::Resize( ResizeArgs{window_size, draw_size} ), _ ) => {
+            state.W = window_size[0]; // Only used to align mouse to winder center
+            state.H = window_size[1];
+        },
+        Event::Input( Input::Move( Motion::MouseCursor( [x, y]) ), _) => {
+            state.mx = (x - state.W/2.0) * 0.01;
+            state.my = (y - state.H/2.0) * 0.01;
+        },
         Event::Loop( Loop::Render(args) ) => {
             if life.tick % 15 == 0 { life.add_glider(0, 0); }
             let dbuff = life.gen_next().lock().unwrap();
             let c = glgfx.draw_begin(viewport); //args.viewport()
             render_polygons(&c.draw_state, &mut glgfx, &mut state, &mut polys, 1.0, Some(&dbuff));
             glgfx.draw_end();
-
             state.tick().printfps(true); // Increment frame count
         },
-        Event::Input( Input::Resize( ResizeArgs{window_size, draw_size} ), _ ) => {
-            //println!("\x1b[1;31mEvent::Input::Resize::ResizeArgs {:?} {:?}", window_size, draw_size)
-            //state.W = window_size[0];
-            //state.H = window_size[1];
-        },
-        Event::Input( Input::Move( Motion::MouseCursor( [x, y]) ), _) => {
-            //println!("\x1b[1;31mEvent::Input::Move::Motion::MouseCursor {:?} {:?} ", x as usize, y as usize);
-            state.mx = (x - state.W/2.0) * 0.01;
-            state.my = (y - state.H/2.0) * 0.01;
-        },
-        Event::Input( Input::Button( ButtonArgs{state:s, button:Button::Keyboard(k), scancode:_} ), _ ) => {
-            //println!("Event::Input::Button == {:?} {:?} {:?}", s, b, c);
-            match k {
-                Key::Q => pwin.set_should_close(true),
-                Key::S => { state.x += -0.05 * (state.mx).sin();  state.y += -0.05 * (state.mx).cos() },
-                Key::A => { state.x +=  0.05 * (state.mx).sin();  state.y +=  0.05 * (state.mx).cos() },
-                Key::D => { state.x +=  0.05 * (state.mx+1.570796).sin(); state.y +=  0.05 * (state.mx+1.570796).cos() },
-                Key::F => { state.x +=  0.05 * (state.mx-1.570796).sin(); state.y +=  0.05 * (state.mx-1.570796).cos() },
-                Key::V => { state.z -=  0.05 },
-                Key::C => { state.z +=  0.05 },
-                Key::R => { life.randomize(state.s()); }
-                Key::Space => { ::util::sleep(500) },
-                _ => ()
-            }
-        }, _ => ()
+        _ => ()
     } }  // match while
     Ok(0)
 }
+
 
 // Main ////////////////////////////////////////////////////////////////////////
 
 pub fn main() {
     ::std::println!("== {}:{} ::{}::main() ====", std::file!(), core::line!(), core::module_path!());
-    fun_piston().unwrap();
+    let ret = fun_piston();
+    print!("{:?}.", ret);
 }
 
 /* Notes ///////////////////////////////////////////////////////////////////////
