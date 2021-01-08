@@ -236,12 +236,9 @@ pub fn mainGravity () {
 
 fn main_maze () {
     ::std::println!("== {}:{} ::{}::main_maze() ====", std::file!(), core::line!(), core::module_path!());
-
     let mut plotter = plotter::Plotter::new();
-
     let bplotter =
         Box::new( move |hm: &util::HashMapDeterministic| { plotter.renderhash(hm); } );
-
     ::maze::start(6, 100, bplotter);
 }
 

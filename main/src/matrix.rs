@@ -3,7 +3,7 @@ use ::std::ops::{Add, Mul, AddAssign, MulAssign};
 use ::std::time::{SystemTime};
 
 //use ::opengl_graphics::{GlGraphics, OpenGL, Colored, Textured, TexturedColor};
-use ::graphics::{Graphics, DrawState};
+use ::graphics::{Graphics, DrawState, Viewport};
 use ::opengl_graphics::{GlGraphics, OpenGL, Colored, Textured};
 use ::piston::*;
 
@@ -11,7 +11,7 @@ use ::glutin_window::{GlutinWindow};
 
 use ::life::*;
 
-const CF2 :&str = "\x1b[32m";
+const CF2 :&str = "\x1b[32m"; // Color Foreground 2
 
 #[derive(Debug)]
 struct State {
@@ -19,7 +19,8 @@ struct State {
     x:f64, y:f64, z:f64,
     mx: f64, my: f64,
     tick: u64,
-    epoch: SystemTime
+    epoch: SystemTime,
+    s: i32
 }
 
 impl State {
@@ -30,15 +31,17 @@ impl State {
             mx:0.0, my:0.0, // mouse
             tick:0,
             epoch:SystemTime::now(),
+            s:1
          }
     } // new()
     fn tick(&mut self) -> &mut Self { self.tick += 1; self }
     fn printfps(&self, doit: bool) {
         if doit && 0 == self.tick % 50 {
-            print!("{}{} ", CF2, self.tick / self.epoch.elapsed().unwrap().as_secs());
+            print!("{}{:.2} ", CF2, self.tick as f32 / self.epoch.elapsed().unwrap().as_secs_f32());
             ::util::flush();
         }
     }
+    fn s(&mut self) -> i32 { self.s += 1; self.s }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -598,13 +601,9 @@ fn render_polygons (
 
 fn fun_piston() -> Result<usize, Box<dyn ::std::error::Error>>{
     let mut state: State = State::new();
-
     let mut polys = make_polys();
     let mut life = Life::new(200, 50);
-    //life.clear();
-
     let ver = OpenGL::V3_2;
-
     let mut pwin =
         GlutinWindow::new(
             &WindowSettings::new( "ASCIIRhOIDS", [state.W as u32, state.H as u32] )
@@ -614,38 +613,35 @@ fn fun_piston() -> Result<usize, Box<dyn ::std::error::Error>>{
                 .decorated(true)
         ).unwrap();
 
-    let mut events = Events::new( EventSettings::new().max_fps(180) );
-
     //let glsl = ver.to_glsl();
     //let colored = Colored::new(glsl);
     //let textured = Textured::new(glsl);
     //let texturedcolor = TexturedColor::new(glsl);
     //let mut glgfx = GlGraphics::from_pieces(colored, textured, texturedcolor);
     let mut glgfx = GlGraphics::new(ver);
+    let mut events = Events::new( EventSettings::new().max_fps(1111) );
+    let viewport = Viewport {
+        rect: [0, 0, 2*state.W as i32, 2*state.H as i32],
+        draw_size: [2*state.W as u32, 2*state.H as u32],
+        window_size: [state.W as f64, state.H as f64]
+    };
 
-    //life.gen_next();
+    //life.clear();
 
     while let Some(event) = events.next(&mut pwin) { match event {
         Event::Loop( Loop::Render(args) ) => {
             if life.tick % 15 == 0 { life.add_glider(0, 0); }
-            //if life.tick % 100 == 0 { life.randomize(s); }
-
-            //life.arena_xfer_dbuff();
-            // Wait for threads to finish
-            //for t in 0 .. life.threadvec.len() { life.threadvec.pop().unwrap().join().unwrap(); }
             let dbuff = life.gen_next().lock().unwrap();
-            //let dbuff = &life.dbuffs.0.lock().unwrap();
-
-            let c = glgfx.draw_begin(args.viewport());
-                render_polygons(&c.draw_state, &mut glgfx, &mut state, &mut polys, 1.0, Some(&dbuff));
+            let c = glgfx.draw_begin(viewport); //args.viewport()
+            render_polygons(&c.draw_state, &mut glgfx, &mut state, &mut polys, 1.0, Some(&dbuff));
             glgfx.draw_end();
 
             state.tick().printfps(true); // Increment frame count
         },
         Event::Input( Input::Resize( ResizeArgs{window_size, draw_size} ), _ ) => {
             //println!("\x1b[1;31mEvent::Input::Resize::ResizeArgs {:?} {:?}", window_size, draw_size)
-            state.W = window_size[0];
-            state.H = window_size[1];
+            //state.W = window_size[0];
+            //state.H = window_size[1];
         },
         Event::Input( Input::Move( Motion::MouseCursor( [x, y]) ), _) => {
             //println!("\x1b[1;31mEvent::Input::Move::Motion::MouseCursor {:?} {:?} ", x as usize, y as usize);
@@ -662,6 +658,7 @@ fn fun_piston() -> Result<usize, Box<dyn ::std::error::Error>>{
                 Key::F => { state.x +=  0.05 * (state.mx-1.570796).sin(); state.y +=  0.05 * (state.mx-1.570796).cos() },
                 Key::V => { state.z -=  0.05 },
                 Key::C => { state.z +=  0.05 },
+                Key::R => { life.randomize(state.s()); }
                 Key::Space => { ::util::sleep(500) },
                 _ => ()
             }

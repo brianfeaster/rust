@@ -164,7 +164,7 @@ impl Term {
                 } else {
                   //println!("'TERM{} {}'", s, s.len());
                   //if s.as_bytes()[0] as char == 'Q' { break; }
-                  tx.send(s).expect("Unable to send on channel");
+                  tx.send(s.clone()).unwrap_or_else(|e| println!("ERROR: Term is unable to forward keyboard input to tx.send({:?}) {:?}", s, e));
                 }
             }
         });

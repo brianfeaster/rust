@@ -107,18 +107,22 @@ fn fun_wait_q_press(term: &Term) {
             util::sleep(1000);
         }
     }
+    term.done();
 }
 
 fn fun_thread(term: Term) {
+    // The thread that read the keyboard in the background never ends...
+    // so gets upset when it's parent dies.
     thread::spawn(move || {
         fun_wait_q_press(&term);
-        println!("thread done.]");
+        println!("...thread done waiting.");
+        term.done();
     });
     let mut c = 10;
     let term = Term::new();
     while 0 < c {
         fun_wait_q_press(&term);
-        println!("[c={}]", c);
+        println!("main got 'q' {}/10", c);
         c -= 1;
         util::sleep(500);
     }
@@ -395,25 +399,24 @@ fn fun_goto (mut i: usize) -> usize {
 
 fn fun_cloned() {
     ::std::println!("== {}:{} ::{}::fun_cloned() ====", std::file!(), core::line!(), core::module_path!());
-
     // Vector
     let v = vec!(1,2,3,4,5,6,7,8,9,10);
-
     // Sets
     type Set = HashSet<usize>;
     let g = v.iter().cloned().collect::<Set>();
-    let h = v.iter().map( |e| *e).collect::<Set>();
-
+    let h = v.iter().map( |e| *e+1000).collect::<Set>();
     // Vector of sets
     type VecSet = Vec<HashSet<usize>>;
     let mut vh = VecSet::new();
     vh.push(g.iter().cloned().collect::<Set>());
     vh.push(h.iter().cloned().collect::<Set>());
 
-    println!("{:?}", v);
-    println!("{:?}", g);
-    println!("{:?}", h);
-    println!("{:?}", vh);
+    println!("v {:?}", v);
+    println!(" g cloned of v {:?}", g);
+    println!(" h map over v  {:?}", h);
+    println!("v {:?}\n", v);
+
+    println!("vh {:?}", vh);
 }
 
 fn fun_emojis () {
@@ -487,6 +490,11 @@ fn fun_json () {
     println!("!!! {:?}", mainJsonSerdes());
 }
 
+fn fun_lifetimes () {
+    ::std::println!("== {}:{} ::{}::fun_lifetimes() ====", std::file!(), core::line!(), core::module_path!());
+
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 pub fn main() {
@@ -497,7 +505,7 @@ pub fn main() {
     //let mut term = Term::new();
     //fun_write_non_block(&mut term);
     //fun_wait_q_press(&term);
-    //fun_thread(&term);
+    //fun_thread(term);
     //fun_walk_iter();
     //fun_read_file_pair();
     //for e in fun_read_poly_file("data/ship.dat") { println!("{:?}", e); }
@@ -509,4 +517,5 @@ pub fn main() {
     //fun_cloned();
     //fun_emojis();
     //fun_json();
+    fun_lifetimes();
 }
