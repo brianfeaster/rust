@@ -228,10 +228,10 @@ pub fn asciiteroids (rx: Receiver<Ipc>) {
     }
 
     // Entity 7 - asteroid
-    let vx0 = rng.gen_range(-0.3, 0.3);
-    let vy0 = rng.gen_range(-0.3, 0.3);
-    let vx1 = rng.gen_range(-0.3, 0.3);
-    let vy1 = rng.gen_range(-0.3, 0.3);
+    let vx0 = rng.gen_range(-0.3..0.3);
+    let vy0 = rng.gen_range(-0.3..0.3);
+    let vx1 = rng.gen_range(-0.3..0.3);
+    let vy1 = rng.gen_range(-0.3..0.3);
     //entities.push(entity_create_asteroid(-50.0, vx0, vy0));
     entities.push(entity_create_asteroid(0.0, 0.0, 0.0, 0.0));
     //entities.push(entity_create_asteroid(50.0, vx1, vy1));
@@ -308,7 +308,7 @@ pub fn asciiteroids (rx: Receiver<Ipc>) {
                   entity_bullet_revive(&mut entities);
               },
               'a' => {
-                    entities.push(entity_create_asteroid(0.0, 0.0, rng.gen_range(-0.01, 0.01), rng.gen_range(-0.01, 0.01)));
+                    entities.push(entity_create_asteroid(0.0, 0.0, rng.gen_range(-0.01..0.01), rng.gen_range(-0.01..0.01)));
                     let cnt = entities.entities.len() - 1;
                     lag::scale(&mut entities.entities[cnt].shape.vertices_original, &[0.1, 0.1]);
              },
@@ -344,8 +344,8 @@ pub fn asciiteroids (rx: Receiver<Ipc>) {
                     entity_create_asteroid(
                         ass.location[0], 
                         ass.location[1], 
-                        rng.gen_range(-0.01, 0.01),
-                        rng.gen_range(-0.01, 0.01));
+                        rng.gen_range(-0.01..0.01),
+                        rng.gen_range(-0.01..0.01));
                 lag::scale(&mut ass2.shape.vertices_original, &[0.1, 0.1]);
                 ass2.age = age;
                 let newscale = 0.5_f32.powi(age);

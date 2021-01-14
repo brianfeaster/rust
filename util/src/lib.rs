@@ -2,12 +2,15 @@
 //!
 //! Often used concepts.
 
-use ::std::collections::{HashMap};
-use ::std::collections::hash_map::{DefaultHasher};
+// External
+use ::std::collections::{HashMap, hash_map::{DefaultHasher}};
 use ::core::hash::{BuildHasher};
 use ::std::io::{Write};
 use ::std::{time::{SystemTime, Duration}, io, thread, fmt};
 use ::rand::{*, rngs::*};
+
+// Local
+pub mod base64;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -25,6 +28,15 @@ pub type HashMapDeterministic = HashMap<(i32, i32), i32, DeterministicHasher>;
 pub fn hashmapdeterministicnew () -> HashMapDeterministic {
     HashMap::with_hasher(DeterministicHasher{})
 }
+
+////////////////////////////////////////////////////////////////////////////////
+
+/// Static Random Numbers
+
+pub fn rf32(f: f32) -> f32 {  ::rand::random::<f32>() * f }
+pub fn rf64(f: f32) -> f64 {  ::rand::random::<f64>() * f as f64 }
+pub fn ri32(i: i32) -> i32 {  ::rand::random::<u32>() as i32 % i }
+pub fn ru32(u: u32) -> u32 {  ::rand::random::<u32>() % u }
 
 ////////////////////////////////////////////////////////////////////////////////
 

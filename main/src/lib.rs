@@ -16,13 +16,6 @@ use ::std::{
     net::TcpListener,
     sync::mpsc::{channel, Receiver}};
 use ::piston_window::*;
-use ::log::*;
-
-
-/// Create a random f32 number
-pub fn r32(m: f32) -> f32 { ::rand::random::<f32>() * m }
-/// Create a random f64 number
-pub fn r64(m: f32) -> f64 { ::rand::random::<f64>() * m as f64 }
 
 ////////////////////////////////////////////////////////////////////////////////
 // A fun console Asteroids game
@@ -247,6 +240,6 @@ pub fn main () {
     //crate::mainAsteroid(); // ??? Is there a symbol to explicitly reference the root module or is "crate" and other modules the only symbols?  A: There are only crates and they canonically start with :: and create is the crate representing the current crate.
     //crate::mainGravity();
     //crate::main_maze();
-    //crate::learn::main();
-    crate::matrix::main();
+    crate::learn::main();
+    //crate::matrix::main();
 }

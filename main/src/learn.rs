@@ -1,21 +1,16 @@
-#![allow(dead_code, unused_variables, non_snake_case)]
-
 // External
-use std::collections::{HashMap, HashSet};
-use ::std::{fs, thread};
+use ::std::{fs, thread, fmt};
+use ::std::collections::{HashMap, HashSet};
+use ::std::io::{self, prelude::*}; // OR use std::io::{Write, Read}
+use ::std::net::{TcpListener, TcpStream};
 use ::std::ops::{Range};
-use ::piston_window::*;
+use ::log::*;
 use ::serde::{Serialize, Deserialize};
 use ::serde_json::{self as sj, Value, from_str, to_string_pretty};
+use ::piston_window::*;
 // Local
-use ::util::{self};
+use ::util::*;
 use ::term::{Term};
-
-/// Create a random f32 number
-pub fn r32(m: f32) -> f32 { ::rand::random::<f32>() * m }
-
-/// Create a random f64 number
-pub fn r64(m: f32) -> f64 { ::rand::random::<f64>() * m as f64 }
 
 fn fun_split_helper (v :&mut Vec<i32>) {
     v[0] = 200;
@@ -51,11 +46,15 @@ pub fn fun_split() {
     println!("v={:?}", v);
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
 fn fun_tuples() {
     println!("== {}:{} ::{}::fun_tuples() ====", std::file!(), core::line!(), core::module_path!());
     let s = (11, { println!("fun_tuples"); 22 });
     println!( "Tuple.? = {:?}", loop { break if true { s.0 } else { s.1 }; });
 }
+
+////////////////////////////////////////////////////////////////////////////////
 
 type Vi32 = Vec<i32>;
 
@@ -69,6 +68,8 @@ fn fun_map() {
     println!("map {:?}",  (0..=v).map(|x| x / 2_i32).collect::<Vec<i32>>()); // type std::ops::RangeInclusive
     println!("iter {:?}", [0, 1, 2, 3].iter().map(|x| x * x).collect::<Vec<i32>>()); // type [i32; 2]
 }
+
+////////////////////////////////////////////////////////////////////////////////
 
 fn fun_write_non_block(term: &mut Term) {
     term.terminalraw();
@@ -84,16 +85,18 @@ fn fun_write_non_block(term: &mut Term) {
                 }
             }
             Err(e) => {
-                util::flush();
+                flush();
                 println!("Err{}", e);
-                util::sleep(1000);
-                util::flush();
+                sleep(1000);
+                flush();
             }
         }
     }
     //||->Result<(), &str> {Err("no")?;Ok(())}().unwrap_err().as_bytes());
     term.done();
 }
+
+////////////////////////////////////////////////////////////////////////////////
 
 fn fun_wait_q_press(term: &Term) {
     term.terminalraw();
@@ -104,11 +107,13 @@ fn fun_wait_q_press(term: &Term) {
         println!("getc '{}' {}'", s, s.len());
         //if s.as_bytes()[0] as char == 'q' { break; }
         if 0 == s.len() {
-            util::sleep(1000);
+            sleep(1000);
         }
     }
     term.done();
 }
+
+////////////////////////////////////////////////////////////////////////////////
 
 fn fun_thread(term: Term) {
     // The thread that read the keyboard in the background never ends...
@@ -124,12 +129,14 @@ fn fun_thread(term: Term) {
         fun_wait_q_press(&term);
         println!("main got 'q' {}/10", c);
         c -= 1;
-        util::sleep(500);
+        sleep(500);
     }
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
 fn fun_walk_iter() {
-    let mut w = util::Walk::new(&[0.0, 0.0], &[10.0, 2.0]);
+    let mut w = Walk::new(&[0.0, 0.0], &[10.0, 2.0]);
     println!("{:?} ", w);
     println!("{:?}", w.next());
     println!("{:?}", w);
@@ -138,44 +145,47 @@ fn fun_walk_iter() {
     //for l in w { print!("{:?}", l); }
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
 #[derive(Debug)]
-struct Pair<T> { // TODO make this enum duh
+struct PairCons<T> { // TODO make this enum duh
   car :Option<Box<T>>,
-  cdr :Option<Box<Pair<T>>>
+  cdr :Option<Box<PairCons<T>>>
 }
 
-impl<T> Pair<T> {
-    pub fn new (car :T, cdr :Pair<T>) -> Self {
-       self::Pair {
+impl<T> PairCons<T> {
+    pub fn new (car :T, cdr :PairCons<T>) -> Self {
+       self::PairCons {
            car : Some(Box::new(car)),
            cdr : Some(Box::new(cdr)),
        }
     }
 
-    pub fn Null () -> Self { self::Pair { car: None, cdr: None} }
+    pub fn Null () -> Self { self::PairCons { car: None, cdr: None} }
 }
 
-fn parse_dat_pair (s: &str, y: u32, x: u32) -> Pair<(char, u32, u32)> {
+fn parse_dat_pair (s: &str, y: u32, x: u32) -> PairCons<(char, u32, u32)> {
     if 0 == s.len() {
-        Pair::Null()
+        PairCons::Null()
     } else {
         match s.as_bytes()[0] as char {
             ' ' => parse_dat_pair(&s[1..], y, x+1),
             '\n' => parse_dat_pair(&s[1..], y+1, 0),
-            c => Pair::new((c, y, x), parse_dat_pair(&s[1..], y, x+1))
+            c => PairCons::new((c, y, x), parse_dat_pair(&s[1..], y, x+1))
         }
     }
 }
 
-
 fn fun_read_file_pair() {
     let s: &str = &fs::read_to_string("data/ship.dat").unwrap();
-    let p :&Pair<(char, u32, u32)> = &parse_dat_pair(s, 0, 0);
+    let p :&PairCons<(char, u32, u32)> = &parse_dat_pair(s, 0, 0);
     println!("p       {:?}", p);
     println!("p.car   {:?}", p.car.as_ref().unwrap());
     println!("p.cadr  {:?}", p.cdr.as_ref().unwrap().car.as_ref().unwrap());
     println!("p.caddr {:?}", p.cdr.as_ref().unwrap().cdr.as_ref().unwrap().car.as_ref().unwrap());
 }
+
+////////////////////////////////////////////////////////////////////////////////
 
 type Cpoint = (char, f32, f32);
 
@@ -193,7 +203,6 @@ fn parse_dat (s: &str, y: u32, x: u32, max :Cpoint, vcp :&mut Vec<Cpoint>) -> Cp
         max
     }
 }
-
 
 pub fn fun_read_poly_file (filename : &str) -> Vec::<Cpoint> {
     let mut vcp = Vec::<Cpoint>::new();
@@ -230,6 +239,8 @@ pub fn fun_read_poly_file (filename : &str) -> Vec::<Cpoint> {
     //println!(" {:?}", hvcp);
     hvcp
 }
+
+////////////////////////////////////////////////////////////////////////////////
 
 fn fun_log () {
     ::pretty_env_logger::init();
@@ -314,7 +325,7 @@ pub fn fun_piston_walk() {
         .decorated(true)
         .build()
         .unwrap();
-    let mut kolor = [r32(1.0), r32(1.0), r32(1.0), 1.0];
+    let mut kolor = [rf32(1.0), rf32(1.0), rf32(1.0), 1.0];
     let mut next = mb.next().unwrap();
 
     while let Some(event) = pwindow.next() {
@@ -334,9 +345,9 @@ pub fn fun_piston_walk() {
                 );
             },
         );
-        //util::sleep(100);
+        //sleep(100);
         if 1 == count % 2 {
-            kolor = [r32(1.0), r32(1.0), r32(1.0), 1.0];
+            kolor = [rf32(1.0), rf32(1.0), rf32(1.0), 1.0];
             next = mb.next().unwrap();
             //pwindow.set_title(format!("{:?}", kolor));
         }
@@ -344,6 +355,7 @@ pub fn fun_piston_walk() {
     }
 }
 
+////////////////////////////////////////////////////////////////////////////////
 
 pub fn fun_fizzbuzz() {
     'main: for i in 1..=30 {
@@ -383,20 +395,6 @@ fn fun_overload() {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-fn fun_goto (mut i: usize) -> usize {
- 'a:loop {
-     'b:loop{
-            match i { 0=>break'b, _=>{i-=1;continue'a} }
-        }
-        break'a i;
-    }
-    .checked_add(0)
-    .map( |e| {
-        println!("Returning {}", e);
-        e } )
-    .unwrap()
-}
-
 fn fun_cloned() {
     ::std::println!("== {}:{} ::{}::fun_cloned() ====", std::file!(), core::line!(), core::module_path!());
     // Vector
@@ -418,6 +416,8 @@ fn fun_cloned() {
 
     println!("vh {:?}", vh);
 }
+
+////////////////////////////////////////////////////////////////////////////////
 
 fn fun_emojis () {
     println!("map {:?}",
@@ -485,14 +485,27 @@ fn mainJsonSerdes () -> Result<usize, MyError> {
     )
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
 fn fun_json () {
     println!("{:?}", mainJson());
     println!("!!! {:?}", mainJsonSerdes());
 }
 
-fn fun_lifetimes () {
-    ::std::println!("== {}:{} ::{}::fun_lifetimes() ====", std::file!(), core::line!(), core::module_path!());
+////////////////////////////////////////////////////////////////////////////////
 
+fn fun_goto (mut i: usize) -> usize {
+ 'a:loop {
+     'b:loop{
+            match i { 0=>break'b, _=>{i-=1;continue'a} }
+        }
+        break'a i;
+    }
+    .checked_add(0)
+    .map( |e| {
+        println!("Returning {}", e);
+        e } )
+    .unwrap()
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -513,9 +526,8 @@ pub fn main() {
     //fun_piston_walk();
     //fun_fizzbuzz();
     //fun_overload();
-    //println!("{:?}", fun_goto(5));
     //fun_cloned();
     //fun_emojis();
     //fun_json();
-    fun_lifetimes();
+    //println!("{:?}", fun_goto(5));
 }

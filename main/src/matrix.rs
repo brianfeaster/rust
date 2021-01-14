@@ -3,12 +3,12 @@ use ::std::ops::{Add, Mul, AddAssign, MulAssign};
 use ::std::time::{SystemTime};
 
 //use ::opengl_graphics::{GlGraphics, OpenGL, Colored, Textured, TexturedColor};
+use ::glutin_window::{GlutinWindow};
 use ::graphics::{Graphics, DrawState, Viewport};
 use ::opengl_graphics::{GlGraphics, OpenGL, Colored, Textured};
 use ::piston::*;
 
-use ::glutin_window::{GlutinWindow};
-
+use ::util::{rf32, rf64};
 use ::life::*;
 
 const CF2 :&str = "\x1b[32m"; // Color Foreground 2
@@ -458,7 +458,7 @@ fn make_polys() -> Vec<Orn> {
                         [ 1.0, 0.0,  1.0, 1.0],
                         [-1.0, 0.0,  1.0, 1.0]],
                     mat: (M4_ID * 0.5) + [-9.0 + (2*x) as f64, -1.0, -9.0 + (2*y) as f64],
-                    c: [crate::r32(0.2)+0.2, 0.0, 0.0, 1.0],
+                    c: [rf32(0.2)+0.2, 0.0, 0.0, 1.0],
                     update: false,
                     alive: true
                 });
@@ -474,7 +474,7 @@ fn make_polys() -> Vec<Orn> {
                         [ 1.0, 0.0,  1.0, 1.0],
                         [-1.0, 0.0,  1.0, 1.0]],
                     mat: (M4_ID * 0.5) + [-9.0 + (2*x) as f64, 5.0, -9.0 + (2*y) as f64],
-                    c: [crate::r32(0.2)+0.2, 0.0, 0.0, 1.0],
+                    c: [rf32(0.2)+0.2, 0.0, 0.0, 1.0],
                     update: false,
                     alive: true
                 });
@@ -497,7 +497,7 @@ fn make_polys() -> Vec<Orn> {
                     [ 1.0,  1.0,  0.0, 1.0],
                     [-1.0,  1.0,  0.0, 1.0]],
                 mat: mat,
-                c: [crate::r32(1.0), crate::r32(1.0), crate::r32(1.0), 0.5],
+                c: [rf32(1.0), rf32(1.0), rf32(1.0), 0.5],
                 update: false,
                 alive: true
             } // Orn
@@ -510,8 +510,8 @@ fn make_polys() -> Vec<Orn> {
     for i in 0..1000 {
         let mut mat = M4_ID;
         mat += [0.0,  0.5,  0.0];
-        y += 0.1 - crate::r64(i as f32) / 50000.0;
-        mat *= Rot::RotY(crate::r64(6.28));
+        y += 0.1 - rf64(i as f32) / 50000.0;
+        mat *= Rot::RotY(rf64(6.28));
         mat += [0.0,  -y/100.0,  (2.0+i as f64/40.0)/100.0];
         mat *= 0.001;
         polys.push(
@@ -522,7 +522,7 @@ fn make_polys() -> Vec<Orn> {
                     [ 1.0,  1.0,  0.0, 1.0],
                     [-1.0,  1.0,  0.0, 1.0]],
                 mat: mat,
-                c: [crate::r32(1.0), crate::r32(1.0), crate::r32(1.0), 0.5],
+                c: [rf32(1.0), rf32(1.0), rf32(1.0), 0.5],
                 update: true,
                 alive: true
             } // Orn
@@ -567,9 +567,9 @@ fn render_polygons (
                 polys[i+goloffset].c[1] = 0.1;
                 polys[i+goloffset].c[2] = 0.1;
             } else { // Born
-                polys[i+goloffset].c[0] = crate::r32(1.0);
-                polys[i+goloffset].c[1] = crate::r32(1.0);
-                polys[i+goloffset].c[2] = crate::r32(1.0);
+                polys[i+goloffset].c[0] = rf32(1.0);
+                polys[i+goloffset].c[1] = rf32(1.0);
+                polys[i+goloffset].c[2] = rf32(1.0);
             }
         } }
     } // for in dbuff // if
@@ -635,11 +635,11 @@ fn handle_keyboard (
     handle_keyboard_movement(state, k);
     match k {
         Key::Q => state.power = false,
-        Key::V => { state.z -=  0.05 },
-        Key::C => { state.z +=  0.05 },
-        Key::E => state.clear = true,
+        Key::X => { state.z -=  0.05 },
+        Key::Z => { state.z +=  0.05 },
+        Key::C => state.clear = true,
         Key::R => state.randomize = true,
-        Key::Space => state.sleep = true,
+        Key::P => state.sleep = true,
         _ => ()
     }
 }
