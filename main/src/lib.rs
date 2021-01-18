@@ -240,6 +240,7 @@ pub fn main () {
     //crate::mainAsteroid(); // ??? Is there a symbol to explicitly reference the root module or is "crate" and other modules the only symbols?  A: There are only crates and they canonically start with :: and create is the crate representing the current crate.
     //crate::mainGravity();
     //crate::main_maze();
-    crate::learn::main();
-    //crate::matrix::main();
+    //crate::learn::main();
+    crate::matrix::main();
+    //util::obj::test();
 }

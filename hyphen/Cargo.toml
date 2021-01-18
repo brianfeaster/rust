@@ -9,3 +9,5 @@ util = { path = "../util" }
 sha1 = "*"
 log = "*"
 pretty_env_logger = "*"
+openssl-sys = "*"
+openssl = "*"
