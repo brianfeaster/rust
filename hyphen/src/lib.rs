@@ -4,7 +4,7 @@ use ::std::error::{Error};
 use ::std::{fmt, thread};
 use ::sha1::*;
 use ::log::*;
-use ::util::*;
+use ::utils::*;
 use openssl::ssl::{SslMethod, SslAcceptor, SslFiletype};
 use std::sync::Arc;
 
@@ -254,10 +254,10 @@ fn fun_websocket_client<S : Read + Write> (tcp: &mut S) -> io::Result<&'static s
 // .or_else will get the Result, destructure the Err, pass error to Fn which return error in a Result
 //
 fn db    <O: fmt::Debug>    (o: O) -> O            { error!("!!! {:?}", o); o }      // .map_err(db)
-fn dberr <O: fmt::Debug, R> (o: O) -> Result<R, O> { error!("!e! {:?}", o); Err(o) } // .or_else(dberr)
+fn _dberr <O: fmt::Debug, R> (o: O) -> Result<R, O> { error!("!e! {:?}", o); Err(o) } // .or_else(dberr)
 
-fn info  <O: fmt::Debug> (o: O) -> O { info!("{:?}", o); o }
-fn error <O: fmt::Debug> (o: O) -> O { error!("{:?}", o); o }
+fn _info  <O: fmt::Debug> (o: O) -> O { info!("{:?}", o); o }
+fn _error <O: fmt::Debug> (o: O) -> O { error!("{:?}", o); o }
 
 fn dbresult <O: fmt::Debug, E: fmt::Debug> (r: Result<O,E>) -> Result<O,E> {
     match r {
@@ -314,7 +314,9 @@ pub fn server_ssl () -> Result<&'static str, Box<dyn Error>> {
 pub fn main () {
     ::std::println!("== {}:{} ::{}::main() ====", std::file!(), core::line!(), core::module_path!());
     if true { ::pretty_env_logger::try_init().map_err(db).unwrap(); }
+    // http server in a new thread
     thread::spawn(|| { dbresult(crate::server()).unwrap(); } );
+    // https server in this thread
     dbresult(crate::server_ssl()).unwrap();
     /*
     Err::<(), io::Error>

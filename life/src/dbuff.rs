@@ -10,11 +10,11 @@ pub struct Dbuff {
 impl Dbuff {
 
     // Put buffers in useable state.  Current buff is all 0, previous buff all MIN.
-    pub fn new (len :usize, s: i32) -> Dbuff {
+    pub fn new (len :usize, i: (i32,i32)) -> Dbuff {
         let mut ba = Vec::with_capacity(len);
         let mut bb = Vec::with_capacity(len);
-        ba.resize(len, ::std::i32::MAX-s);
-        bb.resize(len, ::std::i32::MIN+s);
+        ba.resize(len, i.0);
+        bb.resize(len, i.1);
         Dbuff {
             buffa: ba,
             buffb: bb,
@@ -27,7 +27,7 @@ impl Dbuff {
     fn buffm (&mut self) -> &mut Vec<i32> {
         if self.state() { &mut self.buffb } else { &mut self.buffa }
     }
-    // Returns (buffCurrent, buffLats) for delta comparisoning
+    // Returns (buffCurrent, buffLats) for delta comparisoning during rendering last rendered buffer
     pub fn buffs (&self) -> (&Vec<i32>, &Vec<i32>) {
         if self.state() {
             (&self.buffb, &self.buffa)
@@ -61,7 +61,7 @@ fn test_dbuff () {
     let a2 = [10,20,30];
     let a3 = [100,200,300];
     println!("{:?}", a1); println!("{:?}", a2); println!("{:?}", a3);
-    let mut db = Dbuff::new(10, 1);
+    let mut db = Dbuff::new(10, (1, -100));
     db       .put(&a1)           .db();
     db.tick(); db.put(&[10,20,30])   .db();
     db.tick(); db.put(&[100,200,300]).db();

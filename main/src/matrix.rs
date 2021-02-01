@@ -8,7 +8,7 @@ use ::graphics::{Graphics, DrawState, Viewport};
 use ::opengl_graphics::{GlGraphics, OpenGL, Colored, Textured};
 use ::piston::*;
 
-use ::util::{rf32, rf64};
+use ::utils::{rf32, rf64, Watch};
 use ::life::*;
 
 const CF2 :&str = "\x1b[32m"; // Color Foreground 2
@@ -24,7 +24,6 @@ struct State {
     x:f64, y:f64, z:f64,
     mx: f64, my: f64,
     tick: u64,
-    epoch: SystemTime,
     s: i32
 }
 
@@ -40,17 +39,10 @@ impl State {
             x:0.0, y:0.0, z:0.0, // player
             mx:0.0, my:0.0, // mouse
             tick:0,
-            epoch:SystemTime::now(),
             s:1
          }
     } // new()
     fn tick(&mut self) -> &mut Self { self.tick += 1; self }
-    fn printfps(&self, doit: bool) {
-        if doit && 0 == self.tick % 50 {
-            print!("{}{:.2} ", CF2, self.tick as f32 / self.epoch.elapsed().unwrap().as_secs_f32());
-            ::util::flush();
-        }
-    }
     fn s(&mut self) -> i32 { self.s += 1; self.s }
 }
 
@@ -539,9 +531,9 @@ fn render_polygons (
     state: &mut State,
     polys: &mut Vec<Orn>,
     offset: f64,
-    dbuff: Option<&Dbuff>
+    life: Option<&Life>
 ) {
-    let i = state.tick as f64; // Global parameters for animation
+    let tick = state.tick as f64; // Global parameters for animation
     let mut ii = 0.0f64; // Local counter for animation
 
     // New global transform matrix, order matters.
@@ -557,29 +549,50 @@ fn render_polygons (
     gfx.clear_stencil(0);
 
     // Determine which Game Of Life cells are visible
-    let goloffset = 200;
-    if let Some(dbuff) = dbuff {
-        let (dbuffa, dbuffb) = dbuff.buffs();
-        for (i, e) in dbuffa.iter().zip(dbuffb.iter()).enumerate() {
-        if *e.0 != *e.1 {
-            if *e.0 == 0 {  // Died
-                polys[i+goloffset].c[0] = 0.1;
-                polys[i+goloffset].c[1] = 0.1;
-                polys[i+goloffset].c[2] = 0.1;
-            } else { // Born
-                polys[i+goloffset].c[0] = rf32(1.0);
-                polys[i+goloffset].c[1] = rf32(1.0);
-                polys[i+goloffset].c[2] = rf32(1.0);
+    if let Some(life) = life {
+        let goloffset = 200;
+        if life.arena.is_none() { // Arena buffer is a vector
+            let dbuff = life.dbuff().clone();
+            let dbuffl = dbuff.lock().unwrap();
+            let (dbuffa, dbuffb) = &dbuffl.buffs();
+            for (i, e) in dbuffa.iter().zip(dbuffb.iter()).enumerate() { // Consider old/new cells
+                if *e.1 != *e.0 {
+                    if  *e.0 <= 0 {  // Died
+                        polys[i+goloffset].c[0] = 0.1;
+                        polys[i+goloffset].c[1] = 0.1;
+                        polys[i+goloffset].c[2] = 0.1;
+                    } else { // Born
+                        polys[i+goloffset].c[0] = rf32(1.0);
+                        polys[i+goloffset].c[1] = rf32(1.0);
+                        polys[i+goloffset].c[2] = rf32(1.0);
+                    }
+                } // for in dbuff // if
             }
-        } }
-    } // for in dbuff // if
+        } else { // Arena buffer is a hashmap
+            let arena = life.arena.as_ref().unwrap();
+            let mut i = 0;
+            for y in 0..life.whs.1 {
+                for x in  0..life.whs.0 {
+                    let c =
+                        match arena.get(&(x as i32,y as i32)) {
+                            Some(v) => if 0 < *v { true } else { false },
+                                  _ => false
+                        };
+                    polys[i+goloffset].c[0] = if c { rf32(0.1) } else { 0.0 };
+                    polys[i+goloffset].c[1] = if c { rf32(0.1) } else { 0.0 };
+                    polys[i+goloffset].c[2] = if c { rf32(1.0) } else { 0.0 };
+                    i += 1;
+                }
+            }
+        }
+    }
 
     for poly in polys.iter_mut() { if poly.alive {
         let mut mat :M4 = gmat * poly.mat; // Create new transform matrix from global * object
         if poly.update {
-            mat *= Rot::RotZ(i / 10.0); // Mutate object's transform
-            mat *= Rot::RotX(i / 120.0); // Mutate object's transform
-            mat *= Rot::RotY(i / 100.0 + ii); // Mutate object's transform
+            mat *= Rot::RotZ(tick / 10.0); // Mutate object's transform
+            mat *= Rot::RotX(tick / 120.0); // Mutate object's transform
+            mat *= Rot::RotY(tick / 100.0 + ii); // Mutate object's transform
             mat *= 2f64; //(i as f64 / 10.0 + ii).sin() * 1.0 + 1.5;
         }
         ii += 0.01;
@@ -644,12 +657,16 @@ fn handle_keyboard (
     }
 }
 
-// REPL ////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
 
-fn fun_piston() -> Result<usize, Box<dyn ::std::error::Error>>{
+fn matrix_land () -> Result<&'static str, Box<dyn ::std::error::Error>> {
+    println!("== {}:{} ::{}::matrix_land() ====", std::file!(), core::line!(), core::module_path!());
     let mut state: State = State::new();
+    let mut watch = Watch::new();
     let mut polys = make_polys();
     let mut life = Life::new(200, 50);
+    life.dbuff_en = false; // Disable double buffering
+    //life.arena = None; // Disable hashmap based read buffer, resort to vector buffer
     let ver = OpenGL::V3_2;
     let mut pwin =
         GlutinWindow::new(
@@ -678,7 +695,7 @@ fn fun_piston() -> Result<usize, Box<dyn ::std::error::Error>>{
             handle_keyboard(&mut state, &k);
             if !state.power { pwin.set_should_close(true); }
             if state.randomize { life.randomize(state.s()); state.randomize = false; }
-            if state.sleep { ::util::sleep(500); state.sleep = false; }
+            if state.sleep { ::utils::sleep(500); state.sleep = false; }
             if state.clear { life.clear(); state.clear = false; }
         },
         Event::Input( Input::Resize( ResizeArgs{window_size, draw_size} ), _ ) => {
@@ -691,24 +708,29 @@ fn fun_piston() -> Result<usize, Box<dyn ::std::error::Error>>{
         },
         Event::Loop( Loop::Render(args) ) => {
             if life.tick % 15 == 0 { life.add_glider(0, 0); }
-            let dbuff = life.gen_next().lock().unwrap();
-            let c = glgfx.draw_begin(viewport); //args.viewport()
-            render_polygons(&c.draw_state, &mut glgfx, &mut state, &mut polys, 1.0, Some(&dbuff));
+            life.gen_next();
+                let c = glgfx.draw_begin(viewport); //args.viewport()
+            render_polygons(&c.draw_state, &mut glgfx, &mut state, &mut polys, 1.0, Some(&life));
             glgfx.draw_end();
-            state.tick().printfps(true); // Increment frame count
+        },
+        Event::Loop( Loop::AfterRender(_) ) => {
+            state.tick();
+            watch.tick();
+            if watch.mark(2.0).is_some() {
+                println!("{} {}", watch.tick, watch.fps);
+            }
         },
         _ => ()
-    } }  // match while
-    Ok(0)
+    } }  // match event, while event
+    Ok("Done.")
 }
 
 
 // Main ////////////////////////////////////////////////////////////////////////
 
 pub fn main() {
-    ::std::println!("== {}:{} ::{}::main() ====", std::file!(), core::line!(), core::module_path!());
-    let ret = fun_piston();
-    print!("{:?}.", ret);
+    println!("== {}:{} ::{}::main() ====", std::file!(), core::line!(), core::module_path!());
+    print!("{:?}", matrix_land());
 }
 
 /* Notes ///////////////////////////////////////////////////////////////////////

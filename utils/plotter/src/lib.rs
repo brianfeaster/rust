@@ -5,7 +5,7 @@
 //! 
 use ::std::collections::{HashMap};
 use ::piston_window::*;
-use ::util::*;
+use ::utils::*;
 
 pub struct Plotter {
     pub pwin: PistonWindow,

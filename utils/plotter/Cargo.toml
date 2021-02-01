@@ -1,9 +1,9 @@
 [package]
-name = "util"
+name = "plotter"
 version = "0.0.0"
 authors = ["b f <brianf@geemale.kom>"]
 edition = "2018"
 
 [dependencies]
-rand = "*"
-log  = "*"
+utils = { path = "../../utils" }
+piston_window = "*"

@@ -9,7 +9,7 @@ use ::serde::{Serialize, Deserialize};
 use ::serde_json::{self as sj, Value, from_str, to_string_pretty};
 use ::piston_window::*;
 // Local
-use ::util::*;
+use ::utils::*;
 use ::term::{Term};
 
 fn fun_split_helper (v :&mut Vec<i32>) {
@@ -488,6 +488,7 @@ fn mainJsonSerdes () -> Result<usize, MyError> {
 ////////////////////////////////////////////////////////////////////////////////
 
 fn fun_json () {
+    println!("== {}:{} ::{}::fun_json() ====", std::file!(), core::line!(), core::module_path!());
     println!("{:?}", mainJson());
     println!("!!! {:?}", mainJsonSerdes());
 }
@@ -495,6 +496,7 @@ fn fun_json () {
 ////////////////////////////////////////////////////////////////////////////////
 
 fn fun_goto (mut i: usize) -> usize {
+    println!("== {}:{} ::{}::fun_goto() ====", std::file!(), core::line!(), core::module_path!());
  'a:loop {
      'b:loop{
             match i { 0=>break'b, _=>{i-=1;continue'a} }

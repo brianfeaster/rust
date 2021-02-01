@@ -1,8 +1,11 @@
 use ::std::sync::{Arc, Mutex}; // External
 use ::std::thread::{spawn, JoinHandle};
 use ::std::ops::{Range};
+use ::std::collections::{HashMap};
 use ::rand::{*, rngs::*};
 use crate::dbuff::*; // Local
+
+pub const LIFE_TITLE :&str = "LifeVector";
 
 /// Game of life
 
@@ -26,6 +29,7 @@ pub fn pattern2 (x: i32, y: i32, s: i32) -> bool {
 
 // Arena ///////////////////////////////////////////////////////////////////////
 
+pub type ArenaBase = HashMap<(i32,i32),i32>;
 type Arena = Arc<Vec<Mutex<Vec<i32>>>>;
 
 fn arena_new (width: i32, height: i32, s: i32) -> Arena  {
@@ -67,6 +71,7 @@ fn arena_randomize (bb :&Arena, w :usize, h :usize, s: i32) {
     }
 }
 
+// boolean integer [0,1,2,...] => [0,1,1,...]
 fn bi (n :i32) -> i32 { ( 0 < n) as i32 }
 /// Update/mutate the next gen of life in row 'bb' given the current
 /// row 'rb', the row above 'ra', and row below 'rc'.
@@ -180,6 +185,7 @@ fn spawn_gen_next_rows (
 pub struct Life {
     pub whs: (usize, usize, usize), // width height size
     arenas: (Arena, Arena), // Nested mutable ADTs that can be passed to threads
+    pub arena: Option<ArenaBase>,
     pub dbuffs: (Arc<Mutex<Dbuff>>, Arc<Mutex<Dbuff>>),// Piston is 2xbuffered so we need a dbuff for each
     pub dbuff_en: bool,
     pub tick: usize,
@@ -190,23 +196,25 @@ pub struct Life {
 }
 
 impl Life {
-pub fn new (w: usize, h: usize) -> Life {
-    Life {
-        whs: (w, h, w*h),
-        arenas: ( arena_new(w as i32, h as i32, 1), arena_new(w as i32, h as i32, 0) ),
-        dbuffs: (
-            Arc::new(Mutex::new(Dbuff::new(w*h, 0))),
-            Arc::new(Mutex::new(Dbuff::new(w*h, 1)))),
-        dbuff_en: true,
-        tick: 0,
-        randomize: 0,
-        clear: false,
-        threads: 6,
-        threadvec: vec!()
+    pub fn new (w: usize, h: usize) -> Life {
+        Life {
+            whs: (w, h, w*h),
+            arenas: (
+                arena_new(w as i32, h as i32, 1),
+                arena_new(w as i32, h as i32, 0) ),
+            arena: None,
+            dbuffs: ( // The first buffer xfer will be to B, so set the "previous" to a very dead value.
+                Arc::new(Mutex::new(Dbuff::new(w*h, (-99, -9)))),
+                Arc::new(Mutex::new(Dbuff::new(w*h, (-99, -9))))),
+            dbuff_en: true,
+            tick: 0,
+            randomize: 0,
+            clear: false,
+            threads: 6,
+            threadvec: vec!()
+        }
     }
-} }
 
-impl Life {
     pub fn randomize (&mut self, s: i32) -> &mut Self { self.randomize=s; self }
     pub fn clear (&mut self) -> &mut Self { self.clear=true; self }
     pub fn add_glider (&self, x: usize, y: usize) -> &Self {
@@ -219,7 +227,7 @@ impl Life {
     //   True:  Arena 1->0
     pub fn state (&self) -> bool { 1 == self.tick & 1 }
 
-    pub fn gen_next (&mut self) ->  &Arc<Mutex<Dbuff>> {
+    pub fn gen_next (&mut self) -> &Arc<Mutex<Dbuff>> {
         // Wait for last rendering
         for _ in 0..self.threadvec.len() { self.threadvec.pop().unwrap().join().unwrap(); }
         self.arena_xfer_dbuff();
@@ -244,15 +252,17 @@ impl Life {
                 self.threadvec.push(t);
             }
         }
-        // Return the dbuff to render, opposite the dbuff being generated
-        let ret = match !self.dbuff_en || self.state() {
-            false => &self.dbuffs.1,
-            true  => &self.dbuffs.0
-        };
-        ret
+        self.dbuff()
     }
 
-    pub fn arena_xfer_dbuff (&mut self) {
+    pub fn dbuff(&self) -> &Arc<Mutex<Dbuff>> {
+        match !self.dbuff_en || self.state() {
+            false => &self.dbuffs.1,
+            true  => &self.dbuffs.0
+        }
+    }
+
+    fn arena_xfer_dbuff (&mut self) {
         let ab = match self.state() { // ab is the arena that was just generated
             false => &self.arenas.0,
             true  => &self.arenas.1
@@ -266,10 +276,18 @@ impl Life {
         for y in (0..ab.len()).rev() { // Reverse the indexing so as to only conflict with the nexst generation thread once in the vector.
             //dd.put(&ab[y].lock().unwrap());
             loop { match ab[y].try_lock() { // Spin lock acquire
-                  Err(_) => { print!("L0"); ::util::sleep(1); continue } ,
+                  Err(_) => { print!("L0"); ::utils::sleep(1); continue } ,
                   Ok(t) => { dd.put(&t); break }
             } }
         }
     }
 
 }
+/*
+200x200x4 6-threads
+6 [133.69]      gens:268 ∆lifes:1089 spins:0 s=1
+6 [176.86]      gens:622 ∆lifes:1096 spins:0 s=1
+6 [183.24]      gens:989 ∆lifes:546 spins:0 s=1
+6 [190.31]      gens:1370 ∆lifes:224 spins:0 s=1
+6 [203.13]      gens:1777 ∆lifes:85 spins:0 s=1
+*/

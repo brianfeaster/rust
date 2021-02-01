@@ -2,7 +2,7 @@ use ::std::{thread}; //io::Result;
 use ::std::net::{TcpListener, TcpStream};
 use ::std::{io::{self, prelude::*}}; // OR use std::io::{Write, Read}
 use ::std::collections::{HashMap};
-use ::util::{Prng, HashMapDeterministic, hashmapdeterministicnew};
+use ::utils::{Prng, HashMapDeterministic, hashmapdeterministicnew};
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -148,7 +148,7 @@ pub fn plot (&self) {
         println!("");
     }
     print!("\x1b8"); // restore, forward, space
-    util::flush();
+    utils::flush();
 }
 
 fn walkloop (

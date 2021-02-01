@@ -1,5 +1,5 @@
 use ::term::{self, Tbuff}; // Module path prefix "crate::"" and "self::"" are pedantic.
-use ::util;
+use ::utils;
 use ::piston_window::*;
 
 /// Linear AlGebra -- 3d Stuff
@@ -148,7 +148,7 @@ impl Entity {
             let vs2 = shape.vertices[v];
             let mut x = vs1[0] as i32;
             let mut y = vs1[1] as i32;
-            for [xinc, yinc, ch] in util::Walk::new(&vs1[0..2], &vs2[0..2]) {
+            for [xinc, yinc, ch] in utils::Walk::new(&vs1[0..2], &vs2[0..2]) {
                 x += xinc;
                 y += yinc;
                 tb.set(x as usize, y as usize, 0, 1, ch as u8 as char);

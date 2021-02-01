@@ -3,30 +3,24 @@ use ::piston::*;
 use ::graphics::{Graphics, DrawState, Viewport};
 use ::opengl_graphics::{GlGraphics, OpenGL}; //Colored, Textured
 use ::glutin_window::{GlutinWindow};
-// local
-use ::util::{Watch};
+
+use ::utils::{Watch};
 pub mod dbuff;
-pub mod life;
-pub use crate::life::*;
-pub use crate::dbuff::*;
+pub mod lifeh;
+pub use lifeh::*;
+pub use dbuff::*;
 
 pub fn piston_draw_2d_gl (
     mdbuff: &Mutex<Dbuff>,
     whs: &(usize, usize, usize),
     deltas: &mut usize,
-    ds: &DrawState, // the global transform
+    ds: &DrawState,
     gfx: &mut GlGraphics,
 ) {
     let dbuff = mdbuff.lock().unwrap();
     let (ba, bb) = dbuff.buffs();
     let mut col :f32 = 0.0;
     let mut row :f32 = 0.0;
-    //gfx.clear_color([0.0, 0.0, 0.0, 1.0]);
-    //glgfx.clear_stencil(1);
-
-    //clear([0.0, 0.0, 0.0, 1.0], graphics);
-    //let ds = DrawState { blend: None, stencil: None, scissor: None };
-    //let ds = DrawState { blend: Some(draw_state::Blend::Alpha), stencil: None, scissor: None };
 
     // Scale to NDC "Normalized device coordinate" (still need to translate -1,-1)
     let sx = 2.0 / whs.0 as f32;
@@ -48,7 +42,7 @@ pub fn piston_draw_2d_gl (
             let fy = row * sy - 1.0;
             let gx = fx + sx;
             let gy = fy + sy;
-            if 0< ba[i] {
+            if 0 < ba[i] {
                 gfx.tri_list( ds, &blue, |f| f(&[[fx,fy], [gx,fy], [gx,gy], [fx,fy], [gx,gy], [fx,gy]]) );
                 /*
             } else if -1 == ba[i] {
@@ -70,98 +64,50 @@ pub fn piston_draw_2d_gl (
     if false { gfx.tri_list(ds, &[-1.0, -1.0, -1.0, 0.04], |f| f(&maketriangle()[..])); }
 } // fn piston_draw_2d_callback
 
+pub fn piston_draw_2d_gl_hash (
+    arena: &ArenaBase,
+    whs: &(usize, usize, usize),
+    deltas: &mut usize,
+    ds: &DrawState,
+    gfx: &mut GlGraphics,
+) {
+    let black = [0.0, 0.0, 0.0, 1.0];
+    let blue =  [0.0, 0.0, 1.0, 1.0];
+    gfx.clear_color(black);
+    // Scale to NDC "Normalized device coordinate" (still need to translate -1,-1)
+    let sx = 2.0 / whs.0 as f32;
+    let sy = 2.0 / whs.1 as f32;
+    for ((x,y),_) in arena {
+        *deltas += 1;
+        let col = *x as f32;
+        let row = *y as f32;
+        // Split the GoL square into two triangles
+        let fx = col * sx - 1.0;
+        let fy = row * sy - 1.0;
+        let gx = fx + sx;
+        let gy = fy + sy;
+        gfx.tri_list( ds, &blue, |f| f(&[[fx,fy], [gx,fy], [gx,gy], [fx,fy], [gx,gy], [fx,gy]]) );
+    }
+} // fn piston_draw_2d_gl_hash
+
 fn maketriangle () -> [[f32;2];6] {
     [ [-1.0,-1.0], [1.0,-1.0], [1.0,1.0],
       [-1.0,-1.0], [1.0,1.0],  [-1.0,1.0] ]
 }
 
-/*
-pub fn piston_draw_2d_callback (
-    mdbuff: &Mutex<Dbuff>,
-    whs: &(usize, usize, usize),
-    deltas: &mut usize,
-    graphics :&mut G2d,
-) {
-    let dbuff = mdbuff.lock().unwrap();
-    let (ba, bb) = dbuff.buffs();
-    let mut col :f32 = 0.0;
-    let mut row :f32 = 0.0;
-    //clear([0.0, 0.0, 0.0, 1.0], graphics);
-
-    //let ds = DrawState { blend: None, stencil: None, scissor: None };
-    let ds = DrawState { blend: Some(draw_state::Blend::Alpha), stencil: None, scissor: None };
-
-    // Scale to NDC "Normalized device coordinate" (still need to translate -1,-1)
-    let sx = 2.0 / whs.0 as f32;
-    let sy = 2.0 / whs.1 as f32;
-    let black = [0.0, 0.0, 0.0, 1.0];
-    //let blue = [rf32(), rf32(), rf32(), 0.5];
-    let blue = [0.0, 0.0, 1.0, 1.0];
-    for i in 0..whs.2 {
-        if ba[i] != bb[i] { // Compare buffer A with Buffer B for change in life state
-            *deltas += 1;
-            // Split the GoL square into two triangles
-            let (fx, fy) = ( col * sx - 1.0, row * sy - 1.0 );
-            let (gx, gy) = (fx + sx, fy + sy);
-            let poly = [[fx,fy], [gx,fy], [gx,gy], [fx,fy], [gx,gy], [fx,gy]];
-            if true || 0 != ba[i] {
-                graphics.tri_list(&ds, &if 0!=ba[i]{blue}else{black}, |f| f(&poly));
-            }
-        }
-        col += 1.0;
-        if col == whs.0 as f32 { col = 0.0; row += 1.0; }
-    }
-    if false { // Slowly erase screen.  Disable recBlack plots for cool effect.
-        graphics.tri_list(&ds, &[-1.0, -1.0, -1.0, 0.06],
-             |f| f(&maketriangle()[..]));
-    }
-    //rectangle( [ 1.0, 0.0, 0.0, 1.0 ], [ 50.0, 50.0, 50.0, 50.0 ], context.transform, graphics);
-} // fn piston_draw_2d_callback
-*/
-
-/*
-pub fn piston_render (
-    mdbuff: &Mutex<Dbuff>,
-    whs: &(usize, usize, usize),
-    pwin: &mut PistonWindow,
-    event: Event,
-) -> usize {
-    let mut deltas :usize = 0; // Count number of changes from last aren
-    pwin.draw_2d( &event,
-        | _context:  piston_window::Context,
-          graphics: &mut piston_window::G2d,
-          _device:  &mut piston_window::GfxDevice
-        | {
-        piston_draw_2d_callback(mdbuff, whs, &mut deltas, graphics);
-    });
-    deltas
-}
-*/
-
-
 ////////////////////////////////////////////////////////////////////////////////
 
 fn main_life_2d (w: usize, h: usize, cellsize: usize) -> bool {
     let mut life :Life = Life::new(w, h);
+    //life.arena = None;
     let mut deltas :usize = 0;
     let winsize = (life.whs.0*cellsize, life.whs.1*cellsize);
     let mut watch = Watch::new();
-    /*
-    let mut pwin: PistonWindow =
-        WindowSettings::new("ASCIIRhOIDS", [winsize.0 as u32, winsize.1 as u32])
-            //.exit_on_esc(true)
-            .size(piston_window::Size{width: winsize.0 as f64, height: winsize.1 as f64})
-            .decorated(true)
-            .build()
-            .unwrap();
-    pwin.set_max_fps(1111);
-    */
     let mut s = 1;
-
     let ver = OpenGL::V3_2;
     let mut pwin =
         GlutinWindow::new(
-            &WindowSettings::new( "ASCIIRhOIDS", [winsize.0 as u32, winsize.1 as u32] )
+            &WindowSettings::new( LIFE_TITLE, [winsize.0 as u32, winsize.1 as u32] )
                 .graphics_api(ver)
                 .exit_on_esc(true)
                 .size(piston_window::Size{width:  winsize.0 as f64, height: winsize.1 as f64})
@@ -195,24 +141,30 @@ fn main_life_2d (w: usize, h: usize, cellsize: usize) -> bool {
             }
         },
         Event::Loop(Loop::Render(_args)) => {
-            //println!("{:?}", d());
             let whs = life.whs;
-            let mdbuff = life.gen_next(); // Start next gen threads, get last generated buff
-            //deltas = piston_render(&mdbuff, &whs, &mut pwin, event);
+            //let mdbuff = &life.dbuffs.0;
 
             deltas = 0;
-            let c = glgfx.draw_begin(viewport); // args.viewport()
-            piston_draw_2d_gl(&mdbuff, &whs, &mut deltas, &c.draw_state, &mut glgfx);
+            let ctx = glgfx.draw_begin(viewport); // args.viewport()
+                if life.arena.is_none() {
+                    let mdbuff = life.gen_next(); // Start next gen threads, get last generated buff
+                    piston_draw_2d_gl(mdbuff, &whs, &mut deltas, &ctx.draw_state, &mut glgfx);
+                } else {
+                    life.gen_next(); // Start next gen threads, ignore last generated buff
+                    piston_draw_2d_gl_hash(life.arena.as_ref().unwrap(), &whs, &mut deltas, &ctx.draw_state, &mut glgfx);
+                }
             glgfx.draw_end();
-            //util::sleep(1000);
 
             //if 1==watch.tick { life.add_glider(0, 0); }
             watch.tick();
         },
+        Event::Loop(Loop::AfterRender(_args)) => {
+            //utils::sleep(100);
+        },
         _ => ()
         } // match
 
-        if let Some(w) = watch.mark(2.0) {
+        if let Some(w) = watch.mark(1.7) {
             //life.add_glider(0, 0);
             println!("\x1b[0;35m{} [{:.2}]\tgens:{} ∆lifes:{} spins:{} s={}\x1b[40m",
                 life.threads, w.fps, life.tick, deltas, 0, s);
@@ -223,8 +175,9 @@ fn main_life_2d (w: usize, h: usize, cellsize: usize) -> bool {
 }
 
 fn main_life_ascii (w: usize, h: usize, loopcount: usize) {
-    let mut watch = util::Watch::new();
+    let mut watch = utils::Watch::new();
     let mut life :Life = Life::new(w, h);
+    life.arena = None;
     life.dbuff_en = false;
     let term = ::term::Term::new();
     term.terminalraw();
@@ -254,7 +207,6 @@ fn main_life_ascii (w: usize, h: usize, loopcount: usize) {
                 _ => print!("\x1b[31m\x1b[0m?"), // unknown
             }
         } );
-        //util::sleep(1000);
     }
     term.done();
 }
@@ -270,10 +222,4 @@ pub fn main () {
      invalid locks can communicate the new state (machine)/
   
 println!("{:?}", event);
-200x200x4
-6 [133.69]      gens:268 ∆lifes:1089 spins:0 s=1
-6 [176.86]      gens:622 ∆lifes:1096 spins:0 s=1
-6 [183.24]      gens:989 ∆lifes:546 spins:0 s=1
-6 [190.31]      gens:1370 ∆lifes:224 spins:0 s=1
-6 [203.13]      gens:1777 ∆lifes:85 spins:0 s=1
 */

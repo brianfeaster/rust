@@ -1,6 +1,6 @@
 #![allow(dead_code, non_snake_case, unused_assignments)]
 
-use ::util;
+use ::utils;
 use ::std::fmt;
 use ::std::io::{stdin, stdout, Read, Write};
 use ::std::sync::mpsc::{channel, Receiver, Sender};
@@ -64,7 +64,7 @@ impl Term {
     /// Set non-blocking mode on STDIN.
     pub fn termnonblock(&self) -> &Self {
         unsafe {
-            util::flush();
+            utils::flush();
             libc::fcntl(0, libc::F_SETFL, &self.original_fcntl | libc::O_NONBLOCK);
         }
         return self;
@@ -72,7 +72,7 @@ impl Term {
 
     pub fn termblock(&self) -> &Self {
         unsafe {
-            util::flush();
+            utils::flush();
             libc::fcntl(0, libc::F_SETFL, &self.original_fcntl);
         }
         return self;
@@ -160,7 +160,7 @@ impl Term {
                 let s :String = Term::getc_actual(); // Blocking read.
                 if s.is_empty() {
                     eprintln!("::term::Term::new - thread Term::getc_actual is empty...looping...");
-                    util::sleep(50);
+                    utils::sleep(50);
                 } else {
                   //println!("'TERM{} {}'", s, s.len());
                   //if s.as_bytes()[0] as char == 'Q' { break; }
@@ -179,7 +179,7 @@ impl Term {
         print!("\x1b[0m"); // Reset color
         print!("\x1b[?25h"); // Enable Cursor
         //print!("\x1b[{}H", self.rows); // Cursor to screen bottom
-        util::flush();
+        utils::flush();
     }
 
 } // impl Term
@@ -286,7 +286,7 @@ impl Tbuff {
     pub fn line (&mut self, vs1 :&[f32], vs2 :&[f32], _ch :char, color: i32) {
         let mut x = vs1[0] as i32;
         let mut y = vs1[1] as i32;
-        for [xinc, yinc, c] in util::Walk::new(vs1, vs2) {
+        for [xinc, yinc, c] in utils::Walk::new(vs1, vs2) {
             x += xinc;
             y += yinc;
            self.set(x as usize, y as usize, 0, color, c as u8 as char);
@@ -347,7 +347,7 @@ impl Tbuff {
         let mut lfg: i32 = -1;
         let mut cb :[u8;4] = [0,0,0,0];
         if let Err(_e) = stdout().write("\x1b[H\x1b[0m".as_bytes()) {
-           util::flush();
+           utils::flush();
         }
         let ticknow = self.tick & 1;
         let tickback = ticknow ^ 1;
@@ -394,8 +394,8 @@ impl Tbuff {
                         format!("\x1b[48;2;{};{};{}m", lbg/65536, (lbg/256)%256, lbg%256)
                     };
                     match stdout().write(bs.as_bytes()) {
-                      Ok(o) => { if o != bs.len() { util::flush(); println!("{} != {}", bs.len(), o); util::flush(); util::sleep(5000); }},
-                      Err(_e) => { util::flush(); }
+                      Ok(o) => { if o != bs.len() { utils::flush(); println!("{} != {}", bs.len(), o); utils::flush(); utils::sleep(5000); }},
+                      Err(_e) => { utils::flush(); }
                     }
                 }
                 if lbg != glyph.bg {
@@ -408,14 +408,14 @@ impl Tbuff {
                         format!("\x1b[48;2;{};{};{}m", lbg/65536, (lbg/256)%256, lbg%256)
                     };
                     match stdout().write(bs.as_bytes()) {
-                      Ok(o) => { if o != bs.len() { util::flush(); println!("{} != {}", bs.len(), o); util::flush(); util::sleep(5000); }},
-                      Err(_e) => { util::flush(); }
+                      Ok(o) => { if o != bs.len() { utils::flush(); println!("{} != {}", bs.len(), o); utils::flush(); utils::sleep(5000); }},
+                      Err(_e) => { utils::flush(); }
                     }
                 }
                 let bs = glyph.ch.encode_utf8(&mut cb).as_bytes();
                 match stdout().write(bs)  {
-                    Ok(o) => { if o != bs.len() { util::flush(); println!("{} != {}", bs.len(), o); util::flush(); util::sleep(5000); }},
-                    Err(_e) => { util::flush(); }
+                    Ok(o) => { if o != bs.len() { utils::flush(); println!("{} != {}", bs.len(), o); utils::flush(); utils::sleep(5000); }},
+                    Err(_e) => { utils::flush(); }
                 }
             }
             col += 1;
@@ -425,7 +425,7 @@ impl Tbuff {
     } // Tbuff::dump
 
     pub fn flush (self :& Tbuff) -> &Self {
-        util::flush();
+        utils::flush();
         return self;
     }
 

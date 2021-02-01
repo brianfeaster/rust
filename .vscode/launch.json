@@ -7,12 +7,44 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Cargo launch",
-            "cargo": {
-                "args": [
-                    "build"
-                ]
-            },
+            "name": "hyphen",
+            "cargo": { "args": [ "build", "-p", "hyphen" ] },
+            "env": { "RUST_LOG": "info"},
+            "program": "${cargo:program}",
+            "args": []
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "maze",
+            "cargo": { "args": [ "build", "-p", "maze" ] },
+            "env": { "RUST_LOG": "info"},
+            "program": "${cargo:program}",
+            "args": []
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "life",
+            "cargo": { "args": [ "build", "-p", "life" ] },
+            "env": { "RUST_LOG": "info"},
+            "program": "${cargo:program}",
+            "args": []
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "telegram",
+            "cargo": { "args": [ "build", "-p", "telegram" ] },
+            "env": { "RUST_LOG": "info"},
+            "program": "${cargo:program}",
+            "args": []
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "root",
+            "cargo": { "args": [ "build" ] },
             "env": { "RUST_LOG": "info"},
             "program": "${cargo:program}",
             "args": []

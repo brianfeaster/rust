@@ -46,7 +46,7 @@ pub fn mainAsteroid () {
             //let len :i32    = ipc.send(&msg);
             //println!("[{}]> {:?} {}", ipc.id, msg, len);
             //if len < 1 { println!("ipc.send returned {} breaking!", len); break; }
-            ::util::sleep(200);
+            ::utils::sleep(200);
         }
     } // if isServer
 } 
@@ -221,8 +221,8 @@ pub fn mainGravity () {
 
         print!("\x1b[H\x1b[0;1m{:?} {:?}", entities[1].location, entities[1].velocity);
         print!("\x1b[H\x1b[0;1m{:?}", tick);
-        ::util::flush();
-        ::util::sleep(10);
+        ::utils::flush();
+        ::utils::sleep(10);
     }
     tb.done(); // Reset system terminal the way we found it
 }
@@ -231,7 +231,7 @@ fn main_maze () {
     ::std::println!("== {}:{} ::{}::main_maze() ====", std::file!(), core::line!(), core::module_path!());
     let mut plotter = plotter::Plotter::new();
     let bplotter =
-        Box::new( move |hm: &util::HashMapDeterministic| { plotter.renderhash(hm); } );
+        Box::new( move |hm: &utils::HashMapDeterministic| { plotter.renderhash(hm); } );
     ::maze::start(6, 100, bplotter);
 }
 
@@ -242,5 +242,6 @@ pub fn main () {
     //crate::main_maze();
     //crate::learn::main();
     crate::matrix::main();
-    //util::obj::test();
+    //utils::obj::test();
+    //crate::examples::main();
 }

@@ -8,8 +8,8 @@ edition = "2018"
 
 [dependencies]
 ipc     = { path = "../ipc" }
-util    = { path = "../util" }
-plotter = { path = "../util/plotter" }
+utils    = { path = "../utils" }
+plotter = { path = "../utils/plotter" }
 term    = { path = "../term" }
 life    = { path = "../life" }
 maze    = { path = "../maze" }

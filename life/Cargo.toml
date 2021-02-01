@@ -12,4 +12,4 @@ piston2d-graphics = "*"
 piston2d-opengl_graphics = "*"
 pistoncore-glutin_window = "*"
 term = { path = "../term" }
-util = { path = "../util" }
+utils = { path = "../utils" }

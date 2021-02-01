@@ -8,7 +8,7 @@ use ::rand::Rng;
 use ::piston_window::*;
 
 // Local workspace member libraries -- Specified in root Cargo.toml
-use ::util::{self};
+use ::utils::{self};
 use ::ipc::{Ipc, IpcMsg};
 
 // Local workspace's member's crate's mod-ules -- Specified in main.rs's lib.rs mod
@@ -440,8 +440,8 @@ pub fn asciiteroids (rx: Receiver<Ipc>) {
         //   println!("{:6.2} {:6.2} {:?}", e.location[0], e.location[1], e.cast)
         //).count();
   
-        //util::flush();
-        //util::sleep(0);
+        //utils::flush();
+        //utils::sleep(0);
     } // while tick && power
     tb.done(); // Reset system terminal the way we found it
 }
