@@ -5,7 +5,7 @@ authors = ["b f <brianf@geemale.kom>"]
 edition = "2018"
 
 [workspace]
-members = [ "main", "life", "ipc", "utils", "term", "hyphen", "telegram" ]
+members = [ "main", "life", "ipc", "utils", "term", "hyphen", "tmbot" ]
 # "adventofcode", "hyphen", "maze"
 
 
@@ -13,7 +13,7 @@ members = [ "main", "life", "ipc", "utils", "term", "hyphen", "telegram" ]
 main   = { path = "main" }
 life   = { path = "life" }
 hyphen = { path = "hyphen" }
-telegram = { path = "telegram" }
+tmbot = { path = "tmbot" }
 ########################################
 #maze = { path = "maze" }
 #utils = { path = "utils" }
