@@ -13,7 +13,7 @@ members = [ "main", "life", "ipc", "utils", "term", "hyphen", "tmbot" ]
 main   = { path = "main" }
 life   = { path = "life" }
 hyphen = { path = "hyphen" }
-tmbot = { path = "tmbot" }
+#tmbot = { path = "tmbot" }
 ########################################
 #maze = { path = "maze" }
 #utils = { path = "utils" }
