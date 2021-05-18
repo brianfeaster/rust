@@ -237,10 +237,10 @@ fn main_maze () {
 
 pub fn main () {
     ::std::println!("== {}:{} ::{}::main() ====", std::file!(), core::line!(), core::module_path!());
-    //crate::mainAsteroid(); // ??? Is there a symbol to explicitly reference the root module or is "crate" and other modules the only symbols?  A: There are only crates and they canonically start with :: and create is the crate representing the current crate.
+    crate::mainAsteroid(); // ??? Is there a symbol to explicitly reference the root module or is "crate" and other modules the only symbols?  A: There are only crates and they canonically start with :: and create is the crate representing the current crate.
     //crate::mainGravity();
     //crate::main_maze();
-    crate::learn::main();
+    //crate::learn::main();
     //crate::matrix::main();
     //utils::obj::test();
     //crate::examples::main();

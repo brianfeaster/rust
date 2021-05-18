@@ -7,7 +7,7 @@
 fn main () {
     ::std::println!("== {}:{} ::{}::main() ====", std::file!(), core::line!(), core::module_path!());
     //::adventofcode::main();
-    //::life::main();
-    ::main::main();
+    ::life::main();
+    //::main::main();
     //::hyphen::main();
 }

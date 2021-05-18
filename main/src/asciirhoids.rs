@@ -109,7 +109,7 @@ fn entity_bullet_revive (ents :&mut Entities) {
 // that's how the polygon is split into traianges for collision's
 // right hand rule normal calculations.
 fn entity_create_asteroid (xp :f32, yp :f32, vx :f32, vy :f32) -> Entity {
-    let (points, colors, styles) = load_polygon("data/erik.dat");
+    let (points, colors, styles) = load_polygon("data/asteroid.dat");
     let e = Entity {
         power: true,
         cast: EntityCast::ENEMY,
