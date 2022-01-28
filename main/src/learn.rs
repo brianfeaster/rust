@@ -1,9 +1,9 @@
 // External
-use ::std::{fs, thread, fmt};
+use ::std::{fs, thread, fmt, sync::Arc, rc::Rc, cell::RefCell};
 use ::std::collections::{HashMap, HashSet};
 use ::std::io::{self, prelude::*}; // OR use std::io::{Write, Read}
 use ::std::net::{TcpListener, TcpStream};
-use ::std::ops::{Range};
+use ::std::ops::{Deref, Range};
 use ::log::*;
 use ::serde::{Serialize, Deserialize};
 use ::serde_json::{self as sj, Value, from_str, to_string_pretty};
@@ -11,6 +11,7 @@ use ::piston_window::*;
 // Local
 use ::utils::*;
 use ::term::{Term};
+use ::std::fmt::{Display, Debug};
 
 fn fun_split_helper (v :&mut Vec<i32>) {
     v[0] = 200;
@@ -556,6 +557,139 @@ fn fun_checkfloats() {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+pub struct FunShow { i: i64, t:(usize, Arc<i64>, usize, usize, usize), s: Box<String> }
+
+pub fn fun_showstructaddy_doit(mut s: FunShow) -> FunShow {
+    s.s.push_str("woof");
+    println!("{:p}", &s);
+    s
+}
+
+pub fn fun_showstructaddy() {
+    let s = FunShow{i:129, t:(1,Arc::new(69),3,4,5), s:Box::new("meow".to_string())};
+    println!("{:p}", &s);
+    let ss = fun_showstructaddy_doit(s);
+    println!("{:p}", &ss);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+#[derive(Debug)]
+pub struct Entity (i32, i64);
+
+pub trait Animal                { fn breath(&self); }
+pub trait Walker                { fn walk(&self); }
+pub trait Talker: Walker+Animal { fn talk(&self); }
+
+impl Animal for Entity { fn breath(&self) { println!("breath{:?}", *self)  } }
+impl Walker for Entity { fn walk(&self)   { println!("walk{:?}", *self)  } }
+impl Talker for Entity { fn talk(&self)   { println!("talk{:?}", *self) } }
+
+pub fn fun_variance_doit1 (v: &impl Walker) {
+    v.walk();
+}
+pub fn fun_variance_doit2<T:Talker> (v: T) -> T {
+    v.breath();
+    v.walk();
+    v.talk();
+    v
+}
+
+pub fn fun_variance () {
+    let v = Entity(5, -500); // v < u
+    fun_variance_doit1(&v);
+    fun_variance_doit2(v);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+// An Object
+enum ObjBase {
+    Null,
+    I64(i64),
+    Pair(Obj, Obj),
+    Vector(Vec<Obj>)
+}
+ 
+// Reference/pointer to a thing
+struct Obj ( Rc<RefCell<ObjBase>> );
+
+// Add object types to namespace
+use ObjBase::{Null, I64, Pair, Vector};
+
+// So Obj acts like a pointer with all the benefits and sugar
+impl Deref for Obj {
+    type Target = Rc<RefCell<ObjBase>>;
+    fn deref(&self) -> &Self::Target { &self.0 }
+}
+ 
+// Simplify creating a pointer to an object
+impl From<ObjBase> for Obj {
+    fn from(ob: ObjBase) -> Self {
+        Obj(Rc::new(RefCell::new(ob))) } }
+
+// Object pretty printer
+impl Display for ObjBase {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Null => { write!(f, "()") }
+            I64(i) => { write!(f, "{}", i) }
+            Pair(a,b) => { write!(f, "({} . {})", a, b) }
+            Vector(v) => {
+                let mut buff = String::new();
+                for o in v { buff.push_str(&format!("{}, ", o)); }
+                write!(f, "#({})", buff)
+            }
+        }
+    }
+}
+
+// Printing an object's pointer prints the object
+impl Display for Obj {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.borrow()) } }
+
+// All the things we can do with objects while keeping all
+// the pointer stuff hidden.  Cycles will cause havoc.
+impl Obj {
+    fn clone (&self) -> Self { Self((**self).clone()) }
+    fn new_null () -> Obj { Null.into() }
+    fn new_i64 (i: i64) -> Obj { I64(i).into() }
+    fn new_pair (car: &Obj, cdr: &Obj) -> Obj {
+        Pair( car.clone(), cdr.clone() ).into()
+    }
+    fn new_vec (a: &Obj, b: &Obj, c: &Obj) -> Obj {
+        Vector( vec!(a.clone(), b.clone(), c.clone()) ).into()
+    }
+    fn set_car (&self, v: &Obj) {
+        match &mut *self.borrow_mut() {
+            Pair(ref mut car, _) => *car = v.clone(),
+            _ => ()
+        }
+    }
+    fn set_cdr (&self, v: &Obj) {
+        match &mut *self.borrow_mut() {
+            Pair(_, ref mut cdr) => *cdr = v.clone(),
+            _ => ()
+        }
+    }
+}
+
+fn fun_sexpr () {
+    let n = &Obj::new_null();
+    let i = &Obj::new_i64(4269);
+    let ii = &Obj::new_i64(1010101);
+    let p = &Obj::new_pair(n, i);
+    let q = &Obj::new_pair(p, p);
+    println!("{}", n); println!("{}", p); println!("{}\n--------", q);
+    p.set_cdr(ii); println!("{}", q);
+    q.set_car(n); println!("{}", q);
+    p.set_cdr(&Obj::new_vec(ii, i, ii)); println!("{}", q);
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
+
 pub fn main() {
     ::std::println!("== {}:{} ::{}::main() ====", std::file!(), core::line!(), core::module_path!());
     //self::fun_split();
@@ -575,6 +709,9 @@ pub fn main() {
     //fun_cloned();
     //fun_emojis();
     //fun_json();
-    fun_checkfloats();
     //println!("{:?}", fun_goto(5));
+    //fun_checkfloats();
+    //fun_showstructaddy();
+    //fun_variance();
+    fun_sexpr();
 }

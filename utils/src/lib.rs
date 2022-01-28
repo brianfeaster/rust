@@ -201,17 +201,17 @@ pub fn new (start : &[f32],
 
     if ay < ax { //  # Walk X and increment Y
         if 0 < x {
-        if 0<y { st=0; inc=7; } else { st=0; inc=1; }
+            if 0<y { st=0; inc=7; } else { st=0; inc=1; }
         } else {
-        if 0<y { st=4; inc=5; } else { st=4; inc=3; }
+            if 0<y { st=4; inc=5; } else { st=4; inc=3; }
         }
         y=ay; x=ax;
     } else { // Walk Y and increment X
         if 0 < y {
-        if 0<x { st=6; inc=7; } else { st=6; inc=5; }
+            if 0<x { st=6; inc=7; } else { st=6; inc=5; }
         } else {
-        if 0<x { st=2; inc=1; } else { st=2; inc=3; }
-    }
+            if 0<x { st=2; inc=1; } else { st=2; inc=3; }
+        }
         y=ax; x=ay;
     }
 
